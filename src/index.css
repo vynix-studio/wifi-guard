@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-app text-primary antialiased;
+  }
+
+  /* Smooth transitions */
+  * {
+    @apply transition-colors duration-200;
+  }
+
+  /* Focus styles */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-base-900;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #353D47;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4A5563;
+  }
+}
+
+@layer components {
+  /* Utility classes */
+  .glass {
+    @apply bg-base-800 bg-opacity-40 backdrop-blur-md;
+  }
+
+  .border-subtle {
+    @apply border border-base-600;
+  }
+
+  .divider {
+    @apply border-t border-base-700;
+  }
+
+  /* Status indicator pulse animation */
+  .pulse-soft {
+    animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
