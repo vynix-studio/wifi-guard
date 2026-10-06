@@ -1,0 +1,10 @@
+# Allows the `kali` user to run hostapd without a password prompt, so
+# Evil Corp's GUI (run WITHOUT sudo, to keep $DISPLAY) can still launch
+# `sudo hostapd ...` itself.
+#
+# Install with:
+#   sudo visudo -f /etc/sudoers.d/evil-corp
+# then paste the line below (adjust the username and hostapd path if
+# different — check with `which hostapd`).
+
+kali ALL=(ALL) NOPASSWD: /usr/sbin/hostapd

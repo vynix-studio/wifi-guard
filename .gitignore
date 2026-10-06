@@ -1,0 +1,4 @@
+# Generated at attack time, machine-specific — never commit
+generated_attack.conf
+__pycache__/
+*.pyc
