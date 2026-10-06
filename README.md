@@ -1,75 +1,28 @@
-# React + TypeScript + Vite
+# WiFiGuard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A detection and alerting tool for rogue access points and Evil Twin attacks
+in public spaces. Scans nearby Wi-Fi networks, scores them against a
+rule-based Evil Twin / rogue AP detection engine, and surfaces live results,
+alerts, and trusted-network management through a web dashboard.
 
-Currently, two official plugins are available:
+- `backend/` — Python/Flask backend: cross-platform Wi-Fi scanning,
+  detection engine, SQLite storage, JSON API + SocketIO live updates. See
+  `backend/README.md`.
+- `src/` — React + TypeScript + Tailwind dashboard (Vite). Live Monitor,
+  Alerts, Trusted APs, and Settings, connected to the backend over the API.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Running locally
 
-## React Compiler
+```bash
+# Terminal 1 — backend
+cd backend
+uv sync
+uv run python app.py        # http://localhost:5000
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+# Terminal 2 — frontend
+pnpm install
+pnpm dev                    # http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+The frontend expects the backend at `http://localhost:5000` by default;
+override with `VITE_API_BASE_URL` if it runs elsewhere.
