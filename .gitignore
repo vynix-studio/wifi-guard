@@ -27,3 +27,11 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+
+# Python backend
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/wifiguard.db
+backend/.python-version
+*.pyc

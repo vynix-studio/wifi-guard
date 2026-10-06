@@ -1,4 +1,4 @@
-import { Network } from '../../data/mockData';
+import { Network } from '../../data/types';
 import StatusBadge from '../ui/StatusBadge';
 
 interface NetworkTableProps {

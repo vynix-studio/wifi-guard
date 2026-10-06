@@ -1,8 +1,9 @@
 import { X } from 'lucide-react';
-import { Network } from '../../data/mockData';
+import { Network } from '../../data/types';
 import RiskScore from '../ui/RiskScore';
 import DetectionAnalysis from '../ui/DetectionAnalysis';
 import ObservationHistory from '../ui/ObservationHistory';
+import { useBackend } from '../../context/BackendContext';
 
 interface NetworkInspectorProps {
   network: Network;
@@ -10,6 +11,7 @@ interface NetworkInspectorProps {
 }
 
 export default function NetworkInspector({ network, onClose }: NetworkInspectorProps) {
+  const { trustNetwork, untrustNetwork } = useBackend();
   const getRiskLabel = (score: number) => {
     if (score >= 60) return 'CRITICAL';
     if (score >= 40) return 'HIGH';
@@ -87,12 +89,16 @@ export default function NetworkInspector({ network, onClose }: NetworkInspectorP
         </div>
 
         {/* Detection Analysis */}
-        {network.status === 'rogue' || network.status === 'suspicious' ? (
+        {network.signals.length > 0 ? (
           <>
             <div className="border-t border-divider"></div>
             <div>
               <h3 className="text-xs font-semibold text-tertiary uppercase tracking-wide mb-3">Detection Signals</h3>
-              <DetectionAnalysis riskScore={network.riskScore} />
+              <DetectionAnalysis
+                riskScore={network.riskScore}
+                signals={network.signals}
+                reasons={network.reasons}
+              />
             </div>
           </>
         ) : null}
@@ -103,6 +109,24 @@ export default function NetworkInspector({ network, onClose }: NetworkInspectorP
           <h3 className="text-xs font-semibold text-tertiary uppercase tracking-wide mb-3">Recent Activity</h3>
           <ObservationHistory observations={network.observations} />
         </div>
+
+        {/* Trust */}
+        <div className="border-t border-divider"></div>
+        {network.status === 'trusted' ? (
+          <button
+            onClick={() => void untrustNetwork(network.ssid, network.bssid)}
+            className="w-full px-3 py-1.5 bg-base-700 hover:bg-base-600 text-secondary hover:text-primary rounded text-xs font-semibold transition-colors"
+          >
+            Remove from trusted
+          </button>
+        ) : (
+          <button
+            onClick={() => void trustNetwork(network.ssid, network.bssid)}
+            className="w-full px-3 py-1.5 bg-primary-600 hover:bg-primary-500 text-white rounded text-xs font-semibold transition-colors"
+          >
+            Trust this access point
+          </button>
+        )}
 
         {/* Time Info */}
         <div className="border-t border-divider"></div>

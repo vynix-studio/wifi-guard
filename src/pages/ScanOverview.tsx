@@ -1,9 +1,8 @@
-import { useState } from "react";
 import NetworkOverviewSection from "../components/sections/NetworkOverviewSection";
 import NetworkMetrics from "../components/sections/NetworkMetrics";
 import NetworkTable from "../components/tables/NetworkTable";
 import NetworkInspector from "../components/inspector/NetworkInspector";
-import { MOCK_NETWORKS } from "../data/mockData";
+import { useBackend } from "../context/BackendContext";
 
 interface ScanOverviewProps {
   selectedNetworkId: string | null;
@@ -14,7 +13,7 @@ export default function ScanOverview({
   selectedNetworkId,
   onSelectNetwork,
 }: ScanOverviewProps) {
-  const [networks] = useState(MOCK_NETWORKS);
+  const { networks, connected } = useBackend();
   const selectedNetwork = selectedNetworkId
     ? networks.find((n) => n.id === selectedNetworkId)
     : null;
@@ -36,10 +35,23 @@ export default function ScanOverview({
             <NetworkMetrics stats={stats} />
           </div>
           <div className="mt-8">
-            <NetworkTable
-              networks={networks}
-              onSelectNetwork={onSelectNetwork}
-            />
+            {networks.length === 0 ? (
+              <div className="border border-divider rounded px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-primary mb-1">
+                  {connected ? "Waiting for the first scan" : "Backend not reachable"}
+                </p>
+                <p className="text-xs text-tertiary">
+                  {connected
+                    ? "Nearby networks will appear here as soon as the first scan completes."
+                    : "Start the Flask backend (cd backend && uv run python app.py) and this page will connect automatically."}
+                </p>
+              </div>
+            ) : (
+              <NetworkTable
+                networks={networks}
+                onSelectNetwork={onSelectNetwork}
+              />
+            )}
           </div>
         </div>
       </div>

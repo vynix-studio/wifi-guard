@@ -1,4 +1,4 @@
-import { Observation } from '../../data/mockData';
+import { Observation } from '../../data/types';
 
 interface ObservationHistoryProps {
   observations: Observation[];

@@ -4,6 +4,7 @@ import ScanOverview from './pages/ScanOverview';
 import AlertsPage from './pages/AlertsPage';
 import TrustedAPsPage from './pages/TrustedAPsPage';
 import SettingsPage from './pages/SettingsPage';
+import { BackendProvider } from './context/BackendContext';
 
 type NavView = 'overview' | 'alerts' | 'trusted' | 'settings';
 
@@ -27,11 +28,13 @@ export default function App() {
   };
 
   return (
-    <AppShell
-      currentView={currentView}
-      onNavigate={setCurrentView}
-    >
-      {renderContent()}
-    </AppShell>
+    <BackendProvider>
+      <AppShell
+        currentView={currentView}
+        onNavigate={setCurrentView}
+      >
+        {renderContent()}
+      </AppShell>
+    </BackendProvider>
   );
 }
