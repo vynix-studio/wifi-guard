@@ -62,7 +62,7 @@ fi
 # (gnome/kde/xfce), just enough to run one app window.
 
 REQUIRED_PACKAGES=(
-  hostapd aircrack-ng network-manager python3-tk
+  hostapd aircrack-ng network-manager python3-tk iw
   xserver-xorg xinit openbox
 )
 

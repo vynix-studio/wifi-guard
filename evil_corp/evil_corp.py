@@ -28,7 +28,32 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-INTERFACE = "wlan0"
+def _detect_interface() -> str:
+    """Pick the wireless interface to use.
+
+    Interface names vary by machine/driver (wlan0, wlo1, wlp3s0,
+    wlx<mac>, ...), so don't hardcode one. EVIL_CORP_INTERFACE overrides
+    everything if set; otherwise look for any interface the kernel
+    reports as wireless (has a /sys/class/net/<iface>/wireless dir, which
+    needs no extra tools like `iw` to check), and fall back to the old
+    "wlan0" default if nothing is found (e.g. machine checked before the
+    adapter is plugged in).
+    """
+    env_iface = os.environ.get("EVIL_CORP_INTERFACE")
+    if env_iface:
+        return env_iface
+    sys_net = "/sys/class/net"
+    try:
+        candidates = sorted(
+            name for name in os.listdir(sys_net)
+            if os.path.isdir(os.path.join(sys_net, name, "wireless"))
+        )
+    except FileNotFoundError:
+        candidates = []
+    return candidates[0] if candidates else "wlan0"
+
+
+INTERFACE = _detect_interface()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
 SCENARIOS = {
@@ -64,6 +89,7 @@ class EvilCorpApp:
         self.attack_thread: threading.Thread | None = None
 
         self._build_ui()
+        self.log(f"Using wireless interface: {INTERFACE}")
         self.refresh_networks()
 
     # --- UI -----------------------------------------------------------
