@@ -53,6 +53,10 @@ def _detect_interface() -> str:
     return candidates[0] if candidates else "wlan0"
 
 
+def _interface_exists(iface: str) -> bool:
+    return os.path.isdir(os.path.join("/sys/class/net", iface))
+
+
 INTERFACE = _detect_interface()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
@@ -166,10 +170,40 @@ class EvilCorpApp:
 
     # --- network / airmon control --------------------------------------
 
+    def _require_interface(self) -> bool:
+        """Check the interface we're about to run a command against still
+        exists before running it, rather than finding out from a cryptic
+        'No such device' failure partway through hostapd/airmon-ng.
+        Returns False (and logs what to do) if it's missing."""
+        if _interface_exists(INTERFACE):
+            return True
+        self.log(f"ERROR: wireless interface '{INTERFACE}' not found.")
+        others = sorted(
+            name for name in os.listdir("/sys/class/net")
+            if os.path.isdir(os.path.join("/sys/class/net", name, "wireless"))
+        )
+        if others:
+            self.log(
+                f"Found these wireless interfaces instead: {', '.join(others)}. "
+                f"Set EVIL_CORP_INTERFACE={others[0]} and restart Evil Corp, "
+                f"or run 'ip link show' to check."
+            )
+        else:
+            self.log(
+                "No wireless interfaces detected at all. Check the adapter is "
+                "plugged in / enabled, then run 'ip link show'."
+            )
+        messagebox.showerror(
+            "Evil Corp", f"Wireless interface '{INTERFACE}' not found. See the Status log."
+        )
+        return False
+
     def prepare_attack_mode(self) -> None:
         """Free the wireless interface from NetworkManager/wpa_supplicant so
         hostapd can put it into AP (master) mode. This also stops this
         machine's own Wi-Fi scanning until Restore Networking is run."""
+        if not self._require_interface():
+            return
         self.log("Preparing attack mode: killing NetworkManager/wpa_supplicant on the interface...")
         try:
             subprocess.run(["sudo", "airmon-ng", "check", "kill"], check=True)
@@ -255,6 +289,9 @@ class EvilCorpApp:
     # --- attack lifecycle -------------------------------------------------
 
     def launch_attack(self) -> None:
+        if not self._require_interface():
+            return
+
         idx = self.network_combo.current()
         if idx < 0 or idx >= len(self.networks_raw):
             messagebox.showwarning("Evil Corp", "Select a target network first.")
