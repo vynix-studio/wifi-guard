@@ -14,6 +14,9 @@ configures.
    environment).
 2. **Console autologin on tty1** — `/etc/systemd/system/getty@tty1.service.d/autologin.conf`,
    so the machine drops straight into a shell as you, no login prompt.
+   `setup.sh` prompts for which username to auto-login as (default: the
+   user running the script). Set `EVIL_CORP_AUTOLOGIN_USER=someuser` to
+   skip the prompt, e.g. for a non-interactive/scripted run.
 3. **Auto-`startx` on tty1 login** — appended to `~/.bash_profile`, only
    fires on tty1 so it won't interfere with SSH sessions.
 4. **`~/.xinitrc`** launching `openbox &` then `evil_corp.py` as X's sole

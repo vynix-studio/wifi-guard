@@ -16,6 +16,10 @@
 #
 # Run as your normal user, NOT with sudo — the script calls sudo itself
 # only for the specific commands that need root.
+#
+# Prompts for the username to auto-login as on tty1 (defaults to the
+# current user). Set EVIL_CORP_AUTOLOGIN_USER to skip the prompt, e.g.
+# for a non-interactive run: EVIL_CORP_AUTOLOGIN_USER=demo ./setup.sh
 
 set -euo pipefail
 
@@ -130,15 +134,32 @@ fi
 
 GETTY_OVERRIDE_DIR="/etc/systemd/system/getty@tty1.service.d"
 GETTY_OVERRIDE_FILE="$GETTY_OVERRIDE_DIR/autologin.conf"
-CURRENT_USER="$(whoami)"
+
+if [[ -n "${EVIL_CORP_AUTOLOGIN_USER:-}" ]]; then
+  AUTOLOGIN_USER="$EVIL_CORP_AUTOLOGIN_USER"
+  log "Using autologin user from \$EVIL_CORP_AUTOLOGIN_USER: $AUTOLOGIN_USER"
+elif [[ -t 0 ]]; then
+  read -rp "Username to auto-login as on tty1 [$(whoami)]: " AUTOLOGIN_USER
+  AUTOLOGIN_USER="${AUTOLOGIN_USER:-$(whoami)}"
+else
+  AUTOLOGIN_USER="$(whoami)"
+  skip "Non-interactive shell — defaulting autologin user to $AUTOLOGIN_USER (set \$EVIL_CORP_AUTOLOGIN_USER to override)."
+fi
+
+if ! id "$AUTOLOGIN_USER" >/dev/null 2>&1; then
+  err "User '$AUTOLOGIN_USER' does not exist on this system. Skipping autologin setup — re-run ./setup.sh with a valid username."
+  AUTOLOGIN_USER=""
+fi
+
+if [[ -n "$AUTOLOGIN_USER" ]]; then
 DESIRED_GETTY_CONTENT="[Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin ${CURRENT_USER} --noclear %I \$TERM"
+ExecStart=-/sbin/agetty --autologin ${AUTOLOGIN_USER} --noclear %I \$TERM"
 
 if [[ -f "$GETTY_OVERRIDE_FILE" ]] && diff -q <(echo "$DESIRED_GETTY_CONTENT") "$GETTY_OVERRIDE_FILE" >/dev/null 2>&1; then
-  skip "Console autologin for tty1 already configured for $CURRENT_USER."
+  skip "Console autologin for tty1 already configured for $AUTOLOGIN_USER."
 else
-  log "Configuring console autologin on tty1 for $CURRENT_USER..."
+  log "Configuring console autologin on tty1 for $AUTOLOGIN_USER..."
   sudo mkdir -p "$GETTY_OVERRIDE_DIR"
   TMP_GETTY="$(mktemp)"
   echo "$DESIRED_GETTY_CONTENT" > "$TMP_GETTY"
@@ -148,6 +169,7 @@ else
   sudo systemctl restart getty@tty1.service
   ok "Wrote $GETTY_OVERRIDE_FILE and reloaded tty1."
 fi
+fi  # AUTOLOGIN_USER non-empty
 
 # --- 7. Auto-start X on tty1 login ----------------------------------------
 
