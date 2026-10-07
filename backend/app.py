@@ -38,6 +38,7 @@ from wifiguard.detection.engine import evaluate
 from wifiguard.scanner import scan
 from wifiguard.storage.db import (
     add_trusted_ap,
+    backfill_trusted_baseline,
     clear_alerts,
     get_alerts,
     get_all_settings,
@@ -82,6 +83,17 @@ def monitor_loop() -> None:
             thresholds = get_thresholds()
             raw_networks = scan()
             results = evaluate(raw_networks, trusted, thresholds=thresholds, baselines=baselines)
+
+            # Backfill a missing baseline for any trusted BSSID visible in
+            # this scan (trusted via POST /api/trusted before this feature
+            # existed, or while it wasn't visible yet). A no-op once a
+            # baseline is already recorded. See backfill_trusted_baseline's
+            # docstring for why this is a one-time trust assumption, same
+            # as marking an AP trusted always was.
+            trusted_bssids = set(trusted.values())
+            for r in results:
+                if r["bssid"] in trusted_bssids and r["bssid"] not in baselines:
+                    backfill_trusted_baseline(r["ssid"], r["bssid"], r["channel"], r.get("encryption", ""))
 
             now_iso = datetime.now().isoformat(timespec="seconds")
             for r in results:

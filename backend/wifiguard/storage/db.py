@@ -124,6 +124,36 @@ def add_trusted_ap(
         )
 
 
+def backfill_trusted_baseline(ssid: str, bssid: str, channel: int, encryption: str) -> None:
+    """If this trusted AP has no baseline recorded yet, set it now from a
+    live scan entry. A no-op once a baseline already exists.
+
+    This exists for trusted APs added before the baseline-drift feature
+    existed (their baseline_channel/baseline_encryption are NULL) or
+    added while that network wasn't visible in a scan — without this,
+    they'd silently stay un-monitorable for drift forever. The monitor
+    loop calls this every scan cycle for every trusted BSSID currently
+    seen; COALESCE makes repeated calls free once a baseline is set.
+
+    Same one-time trust assumption as add_trusted_ap() itself: whatever
+    this BSSID is broadcasting the moment the baseline gets set (here, or
+    when it was first marked trusted) is assumed legitimate. If an attack
+    is already running the very first time this runs, it adopts the
+    attacker's config as baseline, same as it always could have. There's
+    no way around this without a baseline existing before the attack
+    starts — which is exactly why it's worth marking APs trusted (so
+    add_trusted_ap() captures a clean baseline) before testing, not after.
+    """
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE trusted_aps SET "
+            "baseline_channel = COALESCE(baseline_channel, ?), "
+            "baseline_encryption = COALESCE(baseline_encryption, ?) "
+            "WHERE ssid = ? AND bssid = ?",
+            (channel, encryption, ssid, bssid.lower()),
+        )
+
+
 def remove_trusted_ap(ssid: str, bssid: str) -> None:
     with get_conn() as conn:
         conn.execute(
