@@ -15,12 +15,12 @@ scenario, and launches/stops a cloned access point with `hostapd`.
 | 2 | False Positive Check | WPA2 (matches real AP) | Same as real AP | WiFiGuard should **not** flag this — confirms it doesn't false-positive on two legitimate APs sharing an SSID (mesh/roaming) |
 | 3 | Channel Variance Only | WPA2 (matches real AP) | Different from real AP | Isolates the channel-mismatch rule on its own |
 
-## One-time setup (on the Kali machine)
+## One-time setup (on the Kali/Debian machine)
 
-1. **Kali Live USB with persistence.** Rufus's persistence slider is
-   unreliable on some ISO/USB combinations. If `df -h` after boot shows the
-   root filesystem entirely on `tmpfs`/`overlay`, create the persistence
-   partition manually:
+1. **Live USB persistence (if you're running from one).** Rufus's
+   persistence slider is unreliable on some ISO/USB combinations. If
+   `df -h` after boot shows the root filesystem entirely on
+   `tmpfs`/`overlay`, create the persistence partition manually:
    ```bash
    sudo fdisk -l                      # identify the USB device (e.g. /dev/sdb) —
                                        # never touch the internal disk (/dev/sda)
@@ -30,16 +30,26 @@ scenario, and launches/stops a cloned access point with `hostapd`.
    sudo cp persistence.conf /mnt/p/persistence.conf   # the file in this folder: "/ union"
    sudo umount /mnt/p
    ```
-   Then select the "Live USB Persistence" boot option at startup.
+   Then select the "Live USB Persistence" boot option at startup. This step
+   touches disk partitions, so it's the one thing `setup.sh` below does
+   **not** automate — pick the wrong device here and you can wipe the wrong
+   disk.
 
-2. **Passwordless sudo for hostapd.** Evil Corp's GUI must run *without*
-   `sudo` (so it keeps `$DISPLAY` and can actually open a window), but it
-   still needs to run `hostapd` as root internally. See
-   `sudoers_evil_corp.example` — install it with `sudo visudo -f
-   /etc/sudoers.d/evil-corp`.
-
-3. **Packages.** `sudo apt install hostapd network-manager aircrack-ng`
-   (for `nmcli` and `airmon-ng`).
+2. **Everything else: run `setup.sh`.**
+   ```bash
+   cd evil_corp
+   ./setup.sh
+   ```
+   This installs `hostapd`, `network-manager` (for `nmcli`), `aircrack-ng`
+   (for `airmon-ng`) and `python3-tk`, sets up passwordless sudo for
+   `hostapd` (see `sudoers_evil_corp.example` for exactly what it writes),
+   creates `~/wifiguard-tests`, and checks your wireless adapter reports AP
+   mode support. Every step first checks whether it's already done, so it's
+   safe to re-run any time you pull new changes from this branch — it only
+   applies what's missing or changed, and never re-installs or
+   re-configures something already in place. Run it as your normal user,
+   not with `sudo` (it calls `sudo` itself only for the steps that need
+   root).
 
 ## Running
 
