@@ -1,10 +1,21 @@
-# Allows the `kali` user to run hostapd without a password prompt, so
-# Evil Corp's GUI (run WITHOUT sudo, to keep $DISPLAY) can still launch
-# `sudo hostapd ...` itself.
+# Allows the `kali` user to run hostapd and the specific `ip link`
+# commands used to spoof/restore this machine's wireless MAC, both without
+# a password prompt — so Evil Corp's GUI (run WITHOUT sudo, to keep
+# $DISPLAY) can still call `sudo hostapd ...` and `sudo ip link set ...`
+# itself. setup.sh writes this automatically; this file is just a
+# reference for setting it up by hand.
+#
+# hostapd: launching the attack AP.
+# ip link set <iface> down/address <mac>/up: the BSSID-clone scenarios
+#   (Test 4/5 in evil_corp.py) spoof this machine's MAC to match the
+#   target's BSSID, then restore the original MAC afterward.
 #
 # Install with:
 #   sudo visudo -f /etc/sudoers.d/evil-corp
-# then paste the line below (adjust the username and hostapd path if
-# different — check with `which hostapd`).
+# then paste the lines below (adjust the username and paths if different
+# — check with `which hostapd` and `which ip`).
 
 kali ALL=(ALL) NOPASSWD: /usr/sbin/hostapd
+kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * down
+kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * address *
+kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * up

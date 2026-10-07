@@ -93,17 +93,34 @@ else
   ok "Created working directory: $WORK_DIR"
 fi
 
-# --- 4. Passwordless sudo for hostapd --------------------------------
+# --- 4. Passwordless sudo for hostapd + MAC spoofing ----------------------
+#
+# hostapd: launching the attack AP.
+# ip link set ... down/address/up: the BSSID-clone scenarios spoof this
+# machine's wireless MAC to match the target's BSSID, then restore it
+# afterward. Scoped to just "set <any iface> down/address <any>/up", not
+# broad ip access.
 
 HOSTAPD_PATH="$(command -v hostapd || echo /usr/sbin/hostapd)"
-DESIRED_RULE="$(whoami) ALL=(ALL) NOPASSWD: ${HOSTAPD_PATH}"
+IP_PATH="$(command -v ip || echo /sbin/ip)"
+SUDO_RULE_USER="$(whoami)"
+DESIRED_SUDOERS_CONTENT="${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${HOSTAPD_PATH}
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * down
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * address *
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * up"
 
-if [[ -f "$SUDOERS_FILE" ]] && sudo grep -qxF "$DESIRED_RULE" "$SUDOERS_FILE" 2>/dev/null; then
-  skip "Passwordless sudo for hostapd already configured ($SUDOERS_FILE)."
+# sudo diff with process substitution (<(...)) is unreliable here — the
+# /dev/fd/N the shell hands diff doesn't always survive the exec into
+# sudo's child process. Write the desired content to a real temp file and
+# diff two plain files instead.
+TMP_SUDOERS="$(mktemp)"
+echo "$DESIRED_SUDOERS_CONTENT" > "$TMP_SUDOERS"
+
+if [[ -f "$SUDOERS_FILE" ]] && sudo diff -q "$TMP_SUDOERS" "$SUDOERS_FILE" >/dev/null 2>&1; then
+  skip "Passwordless sudo for hostapd + MAC spoofing already configured ($SUDOERS_FILE)."
+  rm -f "$TMP_SUDOERS"
 else
-  log "Configuring passwordless sudo for hostapd at $HOSTAPD_PATH..."
-  TMP_SUDOERS="$(mktemp)"
-  echo "$DESIRED_RULE" > "$TMP_SUDOERS"
+  log "Configuring passwordless sudo for hostapd ($HOSTAPD_PATH) and interface MAC changes ($IP_PATH)..."
   if sudo visudo -c -f "$TMP_SUDOERS" >/dev/null 2>&1; then
     sudo install -m 0440 "$TMP_SUDOERS" "$SUDOERS_FILE"
     ok "Wrote $SUDOERS_FILE."

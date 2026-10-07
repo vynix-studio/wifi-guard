@@ -9,11 +9,20 @@ scenario, and launches/stops a cloned access point with `hostapd`.
 
 ## Scenarios
 
-| # | Scenario | Security | Channel | Tests |
-|---|----------|----------|---------|-------|
-| 1 | Evil Twin | Open | Same as real AP | The full attack: BSSID mismatch, OUI mismatch, signal anomaly, encryption downgrade all fire together |
-| 2 | False Positive Check | WPA2 (matches real AP) | Same as real AP | WiFiGuard should **not** flag this — confirms it doesn't false-positive on two legitimate APs sharing an SSID (mesh/roaming) |
-| 3 | Channel Variance Only | WPA2 (matches real AP) | Different from real AP | Isolates the channel-mismatch rule on its own |
+| # | Scenario | Security | Channel | BSSID | Tests |
+|---|----------|----------|---------|-------|-------|
+| 1 | Evil Twin | Open | Same as real AP | This machine's own MAC | The full attack: BSSID mismatch, OUI mismatch, signal anomaly, encryption downgrade all fire together |
+| 2 | False Positive Check | WPA2 (matches real AP) | Same as real AP | This machine's own MAC | WiFiGuard should **not** flag this — confirms it doesn't false-positive on two legitimate APs sharing an SSID (mesh/roaming) |
+| 3 | Channel Variance Only | WPA2 (matches real AP) | Different from real AP | This machine's own MAC | Isolates the channel-mismatch rule on its own |
+| 4 | BSSID Clone + Matching Security | WPA2 (matches real AP) | Same as real AP | **Spoofed to the real AP's exact BSSID** | A true MAC clone — BSSID and OUI both match, channel and encryption both match. Nothing differs from the real AP's broadcast. Tests whether the detector has *any* signal left to catch this, or whether it's fully invisible |
+| 5 | BSSID Clone + Open Security | Open | Same as real AP | **Spoofed to the real AP's exact BSSID** | Same MAC clone as #4, but encryption is downgraded to open — isolates the encryption-downgrade rule on its own, with BSSID/OUI/channel all otherwise matching |
+
+Scenarios 4 and 5 spoof this machine's wireless MAC address (via
+`ip link set <iface> address <bssid>`) to exactly match the target
+network's BSSID before launching hostapd, then restore the original MAC
+on **Stop Attack** (or **Restore Networking**, as a safety net if the
+attack ends some other way). `setup.sh` configures the passwordless sudo
+needed for this — see `sudoers_evil_corp.example`.
 
 ## One-time setup (on the Kali/Debian machine)
 
@@ -41,10 +50,13 @@ scenario, and launches/stops a cloned access point with `hostapd`.
    ./setup.sh
    ```
    This installs `hostapd`, `network-manager` (for `nmcli`), `aircrack-ng`
-   (for `airmon-ng`), `python3-tk`, and a minimal X server + `openbox`
-   (just enough to display the GUI, not a full desktop environment); sets
-   up passwordless sudo for `hostapd` (see `sudoers_evil_corp.example` for
-   exactly what it writes); creates `~/wifiguard-tests`; configures
+   (for `airmon-ng`), `python3-tk`, `iw`, and a minimal X server +
+   `openbox` (just enough to display the GUI, not a full desktop
+   environment); sets up passwordless sudo for `hostapd` and for the
+   specific `ip link set <iface> down/address/up` commands the BSSID-clone
+   scenarios use to spoof/restore this machine's MAC (see
+   `sudoers_evil_corp.example` for exactly what it writes); creates
+   `~/wifiguard-tests`; configures
    console autologin on tty1 and auto-`startx` so the machine boots
    straight into the Evil Corp GUI with no login prompt or manual
    commands (see [`DISPLAY_SETUP.md`](DISPLAY_SETUP.md) for how this
@@ -87,3 +99,11 @@ python3 evil_corp.py   # run as your normal user, NOT with sudo
   nearby device auto-attempted to connect to the cloned SSID using its
   saved password for the real network. This is itself a live demonstration
   of the attack working: a client device trusting the SSID alone.
+- `Cloning BSSID: spoofing <iface>'s MAC to <bssid>...` (Test 4/5 only) —
+  expected, not an error. If it's followed by `Failed to spoof MAC`,
+  double-check `setup.sh` ran successfully and wrote the `ip link set`
+  sudoers rules (see `sudoers_evil_corp.example`).
+- If Evil Corp is closed (or crashes) mid-attack during Test 4/5 without
+  going through **Stop Attack**, this machine may still be broadcasting
+  under the spoofed MAC. Click **Restore Networking** to restore the
+  original MAC as a safety net, or check with `ip link show <iface>`.
