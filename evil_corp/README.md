@@ -52,10 +52,12 @@ needed for this — see `sudoers_evil_corp.example`.
    This installs `hostapd`, `network-manager` (for `nmcli`), `aircrack-ng`
    (for `airmon-ng`), `python3-tk`, `iw`, and a minimal X server +
    `openbox` (just enough to display the GUI, not a full desktop
-   environment); sets up passwordless sudo for `hostapd` and for the
+   environment); sets up passwordless sudo for `hostapd`, for the
    specific `ip link set <iface> down/address/up` commands the BSSID-clone
-   scenarios use to spoof/restore this machine's MAC (see
-   `sudoers_evil_corp.example` for exactly what it writes); creates
+   scenarios use to spoof/restore this machine's MAC, for
+   `airmon-ng check kill` (**Prepare Attack Mode**), and for
+   `systemctl start NetworkManager` (**Restore Networking**) — see
+   `sudoers_evil_corp.example` for exactly what it writes; creates
    `~/wifiguard-tests`; configures
    console autologin on tty1 and auto-`startx` so the machine boots
    straight into the Evil Corp GUI with no login prompt or manual
@@ -107,17 +109,21 @@ python3 evil_corp.py   # run as your normal user, NOT with sudo
   going through **Stop Attack**, this machine may still be broadcasting
   under the spoofed MAC. Click **Restore Networking** to restore the
   original MAC as a safety net, or check with `ip link show <iface>`.
-- `Using 'ip' binary: ...` on startup — informational. If a Test 4/5 MAC
-  spoof ever hangs again (GUI appears frozen on that specific action,
-  never on Prepare/Restore/Refresh — those run on background threads),
-  it's almost always this: sudo resolves a *bare* `ip` through its own
+- `Using 'ip'/'hostapd'/'airmon-ng'/'systemctl' binary: ...` on startup —
+  informational, shows the exact absolute paths this run will `sudo`.
+  If **any** sudo'd action ever hangs again — the GUI appears frozen on
+  that one specific button, never on all of them at once, since each
+  runs on its own background thread — it's almost always the same root
+  cause: sudo resolves a *bare* command name through its own
   `secure_path`, which can disagree with this machine's normal `$PATH`
-  about whether `/usr/sbin` or `/usr/bin` comes first. On Debian,
-  `/usr/sbin/ip` is a symlink to `/usr/bin/ip` — same file, but sudo
-  matches the literal resolved path against the sudoers rule, not the
-  symlink target, so the two paths don't match each other even though
-  they're the same binary. Both `evil_corp.py` and `setup.sh` now always
-  use the absolute `/usr/bin/ip` explicitly (never a bare `ip`) to avoid
-  this, but if you ever see "a password is required" hang again, check
-  with `ls -la /usr/sbin/ip /usr/bin/ip` and `sudo -n /usr/bin/ip link set
-  <iface> down` directly.
+  (as a normal, non-root user) about where that binary lives or which of
+  two equivalent paths comes first (e.g. `/usr/sbin/ip` is a symlink to
+  `/usr/bin/ip` on Debian — same file, but sudo matches the literal
+  resolved path against the sudoers rule, not the symlink target, so the
+  two don't match each other even though they're the same binary). Every
+  sudo'd call in `evil_corp.py` (`ip`, `hostapd`, `airmon-ng`,
+  `systemctl`) now always uses a resolved absolute path, never a bare
+  command name, and `setup.sh` writes the matching sudoers rules with the
+  same path preference — but if you ever see "a password is required"
+  hang again, check `sudo -l` against the exact command and path logged
+  above, and compare with `ls -la /usr/sbin/<cmd> /usr/bin/<cmd>`.

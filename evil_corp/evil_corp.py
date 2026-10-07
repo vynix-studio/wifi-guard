@@ -39,15 +39,17 @@ capable of AP (master) mode. Passwordless sudo for hostapd and for the
 specific `ip link set <iface> ...` commands used to spoof/restore the MAC
 is set up by setup.sh.
 
-Always invokes `ip` by its resolved absolute path (see _detect_ip_path),
-never the bare command name. sudo resolves a bare command through its own
-secure_path, which can disagree with this script's own $PATH about
-whether /usr/sbin or /usr/bin comes first (on Debian, /usr/sbin/ip is a
-symlink to /usr/bin/ip, but sudo matches the literal resolved path against
-the sudoers rule, not the realpath) — so a bare "ip" can silently resolve
-to a path that doesn't match the NOPASSWD rule setup.sh wrote, and sudo
-falls back to prompting for a password that never arrives (no TTY here),
-hanging forever.
+Always invokes every sudo'd command (`ip`, `hostapd`, `airmon-ng`,
+`systemctl`) by its resolved absolute path (see _resolve_absolute_path),
+never a bare command name. sudo resolves a bare command through its own
+secure_path, which can disagree with this script's own $PATH (as a
+normal, non-root user) about where a binary lives — e.g. a normal user's
+PATH typically has no /usr/sbin at all, while sudo's secure_path does.
+A bare command name can therefore silently resolve to a path that
+doesn't match the NOPASSWD rule setup.sh wrote, and sudo falls back to
+prompting for a password that never arrives (no TTY here), hanging
+forever — this bit Test 4/5's MAC spoof first, then Prepare Attack Mode
+/ Restore Networking the same way via airmon-ng/systemctl.
 """
 
 import os
@@ -98,31 +100,52 @@ def _read_mac(iface: str) -> str | None:
         return None
 
 
-def _detect_ip_path() -> str:
-    """Resolve the absolute path to the `ip` binary once, up front.
+def _resolve_absolute_path(preferred: str, command: str) -> str:
+    """Resolve a command's absolute path once, up front, preferring a
+    known canonical location over a PATH search.
 
-    This MUST be an absolute path, not the bare command "ip": sudo
-    resolves a bare command through its own secure_path, which can list
-    /usr/sbin before /usr/bin (or vice versa). On Debian, /usr/sbin/ip is
-    just a symlink to /usr/bin/ip, but sudo matches the literal resolved
-    path against the sudoers rule, not the realpath — so a bare "ip" can
-    resolve to a path that doesn't textually match the NOPASSWD rule
-    setup.sh wrote for /usr/bin/ip, and sudo falls back to asking for a
-    password (which then hangs forever, since this runs with no TTY).
-    Always invoking the absolute path here sidesteps that resolution
-    ambiguity entirely. Prefer /usr/bin/ip outright (what setup.sh's
-    `command -v ip` resolves to under a normal user's PATH, and what it
-    writes into the sudoers rule) before falling back to a PATH search,
-    so this never depends on PATH-ordering quirks matching sudo's
-    separate secure_path.
+    Every `sudo <command> ...` call in this file MUST use an absolute
+    path, never a bare command name: sudo resolves a bare command through
+    its own secure_path, which can disagree with this script's own PATH
+    (as a normal, non-root user) about where a binary lives — e.g. a
+    normal user's PATH typically has no /usr/sbin at all, while sudo's
+    secure_path does. On a merged-usr Debian, /usr/sbin/<x> and
+    /usr/bin/<x> can even be the same file via a symlink, but sudo matches
+    the literal resolved path against the sudoers rule, not the realpath
+    — so a bare command name can resolve to a path that doesn't textually
+    match the NOPASSWD rule setup.sh wrote, and sudo falls back to asking
+    for a password that never arrives (no TTY here), hanging forever.
+    Preferring `preferred` outright (the same canonical path setup.sh
+    prefers when writing the matching sudoers rule) sidesteps that
+    resolution ambiguity entirely, rather than depending on this
+    process's PATH happening to agree with sudo's separate secure_path.
     """
-    if os.path.exists("/usr/bin/ip"):
-        return "/usr/bin/ip"
-    return shutil.which("ip") or "/usr/bin/ip"
+    if os.path.exists(preferred):
+        return preferred
+    return shutil.which(command) or preferred
+
+
+def _detect_ip_path() -> str:
+    return _resolve_absolute_path("/usr/bin/ip", "ip")
+
+
+def _detect_hostapd_path() -> str:
+    return _resolve_absolute_path("/usr/sbin/hostapd", "hostapd")
+
+
+def _detect_airmon_path() -> str:
+    return _resolve_absolute_path("/usr/sbin/airmon-ng", "airmon-ng")
+
+
+def _detect_systemctl_path() -> str:
+    return _resolve_absolute_path("/usr/bin/systemctl", "systemctl")
 
 
 INTERFACE = _detect_interface()
 IP_PATH = _detect_ip_path()
+HOSTAPD_PATH = _detect_hostapd_path()
+AIRMON_PATH = _detect_airmon_path()
+SYSTEMCTL_PATH = _detect_systemctl_path()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
 SCENARIOS = {
@@ -181,6 +204,9 @@ class EvilCorpApp:
         if self.original_mac:
             self.log(f"Original MAC: {self.original_mac}")
         self.log(f"Using 'ip' binary: {IP_PATH}")
+        self.log(f"Using 'hostapd' binary: {HOSTAPD_PATH}")
+        self.log(f"Using 'airmon-ng' binary: {AIRMON_PATH}")
+        self.log(f"Using 'systemctl' binary: {SYSTEMCTL_PATH}")
         self.refresh_networks()
 
     # --- UI -----------------------------------------------------------
@@ -317,7 +343,7 @@ class EvilCorpApp:
         def worker() -> None:
             try:
                 subprocess.run(
-                    ["sudo", "airmon-ng", "check", "kill"],
+                    ["sudo", AIRMON_PATH, "check", "kill"],
                     check=True, capture_output=True, text=True,
                 )
                 self.root.after(
@@ -342,7 +368,7 @@ class EvilCorpApp:
         def worker() -> None:
             try:
                 subprocess.run(
-                    ["sudo", "systemctl", "start", "NetworkManager"],
+                    ["sudo", SYSTEMCTL_PATH, "start", "NetworkManager"],
                     check=True, capture_output=True, text=True,
                 )
                 self.root.after(0, self.log, "NetworkManager restored. Wi-Fi scanning available again.")
@@ -556,7 +582,7 @@ class EvilCorpApp:
                 if not self._spoof_mac(self._clone_target_bssid):
                     return
             self.attack_process = subprocess.Popen(
-                ["sudo", "hostapd", CONF_PATH],
+                ["sudo", HOSTAPD_PATH, CONF_PATH],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
             for line in self.attack_process.stdout:

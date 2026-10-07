@@ -93,36 +93,53 @@ else
   ok "Created working directory: $WORK_DIR"
 fi
 
-# --- 4. Passwordless sudo for hostapd + MAC spoofing ----------------------
+# --- 4. Passwordless sudo for hostapd, MAC spoofing, airmon-ng, systemctl --
 #
 # hostapd: launching the attack AP.
 # ip link set ... down/address/up: the BSSID-clone scenarios spoof this
 # machine's wireless MAC to match the target's BSSID, then restore it
 # afterward. Scoped to just "set <any iface> down/address <any>/up", not
 # broad ip access.
+# airmon-ng check kill: Prepare Attack Mode frees the interface from
+# NetworkManager/wpa_supplicant.
+# systemctl start NetworkManager: Restore Networking gives this machine's
+# own Wi-Fi back afterward.
+#
+# Every path below prefers a known canonical location outright (checked
+# with -e) rather than trusting `command -v`'s PATH-search order: sudo
+# resolves a bare command through its own secure_path, which can disagree
+# with a normal (non-root) user's $PATH about where a binary lives — e.g.
+# a normal user's PATH typically has no /usr/sbin at all, while sudo's
+# secure_path does, and even where both exist (/usr/sbin/ip is a symlink
+# to /usr/bin/ip on Debian) sudo matches the literal resolved path
+# against the sudoers rule, not the realpath. If this script picked
+# whichever path happened to resolve first here, evil_corp.py's `sudo
+# <cmd> ...` calls could silently resolve to a different path at runtime
+# and fail to match the rule written below — which is exactly the bug
+# that caused Test 4/5's MAC spoof, then Prepare Attack Mode/Restore
+# Networking, to hang waiting on a password prompt with no TTY to answer
+# it. evil_corp.py's own _resolve_absolute_path() uses this same
+# "canonical path first" preference, so the two always agree.
+resolve_path() {
+  local preferred="$1" command="$2"
+  if [[ -e "$preferred" ]]; then
+    echo "$preferred"
+  else
+    command -v "$command" || echo "$preferred"
+  fi
+}
 
-HOSTAPD_PATH="$(command -v hostapd || echo /usr/sbin/hostapd)"
-# Prefer /usr/bin/ip explicitly rather than trusting `command -v ip`'s
-# PATH-search order: on Debian, /usr/sbin/ip is just a symlink to
-# /usr/bin/ip, but sudo matches the literal path it resolves against this
-# rule, not the realpath. sudo's own secure_path can list /usr/sbin before
-# /usr/bin (even when this shell's $PATH doesn't), so if this script picked
-# whichever one happens to resolve first here, evil_corp.py's `sudo ip ...`
-# calls could silently resolve to the other path at runtime and fail to
-# match this rule — which is exactly the bug that caused Test 4/5 to hang
-# waiting on a password prompt with no TTY to answer it. evil_corp.py's own
-# _detect_ip_path() uses this same "/usr/bin/ip first" rule, so the two
-# always agree.
-if [[ -e /usr/bin/ip ]]; then
-  IP_PATH="/usr/bin/ip"
-else
-  IP_PATH="$(command -v ip || echo /sbin/ip)"
-fi
+HOSTAPD_PATH="$(resolve_path /usr/sbin/hostapd hostapd)"
+IP_PATH="$(resolve_path /usr/bin/ip ip)"
+AIRMON_PATH="$(resolve_path /usr/sbin/airmon-ng airmon-ng)"
+SYSTEMCTL_PATH="$(resolve_path /usr/bin/systemctl systemctl)"
 SUDO_RULE_USER="$(whoami)"
 DESIRED_SUDOERS_CONTENT="${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${HOSTAPD_PATH}
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * down
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * address *
-${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * up"
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * up
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${AIRMON_PATH} check kill
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start NetworkManager"
 
 # sudo diff with process substitution (<(...)) is unreliable here — the
 # /dev/fd/N the shell hands diff doesn't always survive the exec into
@@ -132,10 +149,10 @@ TMP_SUDOERS="$(mktemp)"
 echo "$DESIRED_SUDOERS_CONTENT" > "$TMP_SUDOERS"
 
 if [[ -f "$SUDOERS_FILE" ]] && sudo diff -q "$TMP_SUDOERS" "$SUDOERS_FILE" >/dev/null 2>&1; then
-  skip "Passwordless sudo for hostapd + MAC spoofing already configured ($SUDOERS_FILE)."
+  skip "Passwordless sudo for hostapd/MAC spoofing/airmon-ng/systemctl already configured ($SUDOERS_FILE)."
   rm -f "$TMP_SUDOERS"
 else
-  log "Configuring passwordless sudo for hostapd ($HOSTAPD_PATH) and interface MAC changes ($IP_PATH)..."
+  log "Configuring passwordless sudo for hostapd ($HOSTAPD_PATH), interface MAC changes ($IP_PATH), airmon-ng ($AIRMON_PATH), and NetworkManager ($SYSTEMCTL_PATH)..."
   if sudo visudo -c -f "$TMP_SUDOERS" >/dev/null 2>&1; then
     sudo install -m 0440 "$TMP_SUDOERS" "$SUDOERS_FILE"
     ok "Wrote $SUDOERS_FILE."

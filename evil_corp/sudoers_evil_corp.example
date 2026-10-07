@@ -1,21 +1,41 @@
-# Allows the `kali` user to run hostapd and the specific `ip link`
-# commands used to spoof/restore this machine's wireless MAC, both without
-# a password prompt — so Evil Corp's GUI (run WITHOUT sudo, to keep
-# $DISPLAY) can still call `sudo hostapd ...` and `sudo ip link set ...`
-# itself. setup.sh writes this automatically; this file is just a
-# reference for setting it up by hand.
+# Allows the `kali` user to run hostapd, the specific `ip link` commands
+# used to spoof/restore this machine's wireless MAC, airmon-ng (to free the
+# interface for AP mode), and systemctl (to restart NetworkManager
+# afterward) — all without a password prompt, so Evil Corp's GUI (run
+# WITHOUT sudo, to keep $DISPLAY) can call `sudo hostapd ...`,
+# `sudo ip link set ...`, `sudo airmon-ng check kill`, and
+# `sudo systemctl start NetworkManager` itself. setup.sh writes this
+# automatically; this file is just a reference for setting it up by hand.
 #
 # hostapd: launching the attack AP.
 # ip link set <iface> down/address <mac>/up: the BSSID-clone scenarios
 #   (Test 4/5 in evil_corp.py) spoof this machine's MAC to match the
 #   target's BSSID, then restore the original MAC afterward.
+# airmon-ng check kill: Prepare Attack Mode frees the interface from
+#   NetworkManager/wpa_supplicant so hostapd can use it.
+# systemctl start NetworkManager: Restore Networking gives this machine's
+#   own Wi-Fi back afterward.
+#
+# Every path below MUST be the exact absolute path sudo itself resolves
+# the bare command to — not wherever `which <cmd>` happens to point as a
+# normal user. sudo matches the literal path, not a symlink target, and
+# its own secure_path can disagree with a normal user's $PATH about which
+# of two otherwise-identical paths (e.g. /usr/sbin/ip vs /usr/bin/ip,
+# often just a symlink to each other) comes first. Getting this wrong is
+# exactly what caused Test 4/5, then Prepare Attack Mode/Restore
+# Networking, to hang waiting on a password prompt that never arrives
+# (evil_corp.py runs with no TTY). setup.sh resolves these automatically
+# and consistently with what evil_corp.py itself invokes; if setting this
+# up by hand, double-check with `sudo -n <full path> ...` against the
+# exact command, not just `which <cmd>`.
 #
 # Install with:
 #   sudo visudo -f /etc/sudoers.d/evil-corp
-# then paste the lines below (adjust the username and paths if different
-# — check with `which hostapd` and `which ip`).
+# then paste the lines below (adjust the username and paths if different).
 
 kali ALL=(ALL) NOPASSWD: /usr/sbin/hostapd
-kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * down
-kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * address *
-kali ALL=(ALL) NOPASSWD: /usr/sbin/ip link set * up
+kali ALL=(ALL) NOPASSWD: /usr/bin/ip link set * down
+kali ALL=(ALL) NOPASSWD: /usr/bin/ip link set * address *
+kali ALL=(ALL) NOPASSWD: /usr/bin/ip link set * up
+kali ALL=(ALL) NOPASSWD: /usr/sbin/airmon-ng check kill
+kali ALL=(ALL) NOPASSWD: /usr/bin/systemctl start NetworkManager
