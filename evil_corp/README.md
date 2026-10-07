@@ -51,6 +51,12 @@ scenario, and launches/stops a cloned access point with `hostapd`.
    not with `sudo` (it calls `sudo` itself only for the steps that need
    root).
 
+3. **Optional: boot straight into the GUI, no login needed.** See
+   [`DISPLAY_SETUP.md`](DISPLAY_SETUP.md) — a manual, one-time setup
+   (minimal X server, console autologin, auto-`startx`) kept separate
+   from `setup.sh` on purpose, since it changes how the whole machine
+   boots.
+
 ## Running
 
 ```bash
