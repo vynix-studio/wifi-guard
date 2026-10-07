@@ -1,115 +1,90 @@
-# Headless-to-GUI setup: auto-boot straight into Evil Corp
+# Headless-to-GUI boot: how it works
 
-Optional, one-time, **manual** setup for running the machine headless
-(keyboard only, no monitor interaction needed) but still getting the
-Tkinter GUI to appear automatically on boot — no login prompt, no typing
-`startx` or `python3 evil_corp.py` by hand each time.
+`setup.sh` configures the machine to boot straight into the Evil Corp GUI
+— no monitor/keyboard interaction needed, no login prompt, no typing
+`startx` or `python3 evil_corp.py` by hand. This file documents what it
+sets up and how to troubleshoot it; you don't need to run anything here
+manually — `./setup.sh` does it, idempotently, like everything else it
+configures.
 
-This is deliberately **not** part of `setup.sh`. It changes how the whole
-machine boots and logs in, which is a one-time decision for a dedicated
-test box, not something that should silently happen on every
-`git pull && ./setup.sh`. If you don't want this, skip this file entirely
-— `setup.sh` plus running `python3 evil_corp.py` by hand still works fine.
+## What `setup.sh` sets up
 
-## 1. Install a minimal X server + window manager
+1. **Minimal X server + window manager** — `xserver-xorg`, `xinit`,
+   `openbox` (just enough to display one window, not a full desktop
+   environment).
+2. **Console autologin on tty1** — `/etc/systemd/system/getty@tty1.service.d/autologin.conf`,
+   so the machine drops straight into a shell as you, no login prompt.
+3. **Auto-`startx` on tty1 login** — appended to `~/.bash_profile`, only
+   fires on tty1 so it won't interfere with SSH sessions.
+4. **`~/.xinitrc`** launching `openbox &` then `evil_corp.py` as X's sole
+   client — closing the GUI window ends the X session and drops back to
+   the tty.
 
-```bash
-sudo apt update
-sudo apt install --no-install-recommends -y xserver-xorg xinit openbox
-```
+Power on → boots → autologs in on tty1 → `startx` fires from
+`.bash_profile` → X launches `evil_corp.py`. No keyboard interaction
+needed before the GUI is on screen.
 
-`--no-install-recommends` keeps this to just enough to display one window
-— no full desktop environment (GNOME/KDE/XFCE).
+Re-running `./setup.sh` after a `git pull` checks all of this and only
+touches what's missing or changed — same as the rest of the script.
 
-## 2. Console autologin on tty1
+## Troubleshooting
 
-```bash
-sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
-sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf > /dev/null <<'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin YOURUSERNAME --noclear %I $TERM
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart getty@tty1.service
-```
-
-Replace `YOURUSERNAME` with your actual login username (check with
-`whoami`).
-
-**Gotcha:** the `[Service]` section header is case-sensitive. If you see
-this in `journalctl -u getty@tty1.service`:
-
-```
-Unknown section 'service'. Ignoring.
-```
-
-your file has `[service]` (lowercase) instead of `[Service]` — fix the
-capitalization and re-run the `daemon-reload`/`restart` above.
-
-Verify the override actually merged in:
+**Still asked for a password at boot / no autologin:**
 
 ```bash
 systemctl cat getty@tty1.service
 ```
 
-You should see your override block appended at the bottom, after the
-default unit content.
+Check your override block is appended at the bottom, under
+`# /etc/systemd/system/getty@tty1.service.d/autologin.conf`. If it's
+missing, re-run `./setup.sh`.
 
-## 3. Auto-start X on login
+**`journalctl -u getty@tty1.service` shows:**
 
-```bash
-cat >> ~/.bash_profile <<'EOF'
-if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
-  startx
-fi
-EOF
+```
+Unknown section 'service'. Ignoring.
 ```
 
-Only fires on tty1 (where autologin happens), so it won't try to start a
-second X session if you SSH in separately.
-
-## 4. Point `startx` straight at the GUI
-
-By default `startx` runs whatever's in `~/.xinitrc`. Launch
-`evil_corp.py` directly as X's only client — closing the GUI window ends
-the X session and drops you back to the tty:
+The `[Service]` section header is case-sensitive — if this ever happens
+from a manual edit, it means something wrote `[service]` (lowercase).
+`setup.sh` always writes it correctly, so this should only come up if the
+file was hand-edited afterward. Fix the capitalization, then:
 
 ```bash
-cat > ~/.xinitrc <<'EOF'
-exec python3 ~/wifiguard-tests/evil_corp/evil_corp.py
-EOF
+sudo systemctl daemon-reload
+sudo systemctl restart getty@tty1.service
 ```
 
-(adjust the path if you cloned this repo somewhere other than
-`~/wifiguard-tests`)
-
-This skips window-manager chrome (no title bar drag/resize) since
-nothing but the Tkinter app is running. If you'd rather keep basic window
-management, start `openbox` in the background first:
-
-```bash
-cat > ~/.xinitrc <<'EOF'
-openbox &
-exec python3 ~/wifiguard-tests/evil_corp/evil_corp.py
-EOF
-```
-
-## Result
-
-Power on → boots → autologs in on tty1 → `startx` fires from
-`.bash_profile` → X launches `evil_corp.py` as its sole client. No
-keyboard interaction needed before the GUI is on screen.
-
-## Testing without a full reboot
-
-After editing any of the systemd/bash_profile/xinitrc pieces above, you
-can test the getty/autologin part alone with:
+**Testing without a full reboot** — restart the getty service and switch
+tty directly instead of rebooting each time:
 
 ```bash
 sudo systemctl restart getty@tty1.service
 ```
 
-then switch to tty1 with `Ctrl+Alt+F1`. For the X/`.xinitrc` part, just
-log out and log back in, or run `startx` by hand once to confirm
-`evil_corp.py` launches before relying on the automatic path.
+then `Ctrl+Alt+F1` to switch to tty1. For the X/`.xinitrc` part, log out
+and back in, or run `startx` by hand once to confirm `evil_corp.py`
+launches.
+
+**`-bash: [-z: command not found` on login** — a broken `~/.bash_profile`
+(missing space after `[`, e.g. `[-z` instead of `[ -z`). Check with
+`cat ~/.bash_profile`; if `setup.sh` wrote it, this shouldn't happen, but
+if you'd hand-edited it before, remove the broken block and re-run
+`./setup.sh`.
+
+## Opting out
+
+If you don't want the machine to boot straight into the GUI (e.g. you
+want a normal login prompt), just don't run the autologin/X pieces —
+there's currently no flag to skip them individually, so remove the
+generated files afterward if needed:
+
+```bash
+sudo rm -f /etc/systemd/system/getty@tty1.service.d/autologin.conf
+sudo systemctl daemon-reload
+# then manually remove the startx block from ~/.bash_profile
+```
+
+`setup.sh` will recreate them again on your next run — that's the
+trade-off for being idempotent, so only do this if you really want
+default Debian login behavior back.

@@ -52,8 +52,15 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 # --- 2. Packages ---------------------------------------------------------
+#
+# Includes a minimal X server + window manager so evil_corp.py's Tkinter
+# GUI has something to display on at boot — not a full desktop environment
+# (gnome/kde/xfce), just enough to run one app window.
 
-REQUIRED_PACKAGES=(hostapd aircrack-ng network-manager python3-tk)
+REQUIRED_PACKAGES=(
+  hostapd aircrack-ng network-manager python3-tk
+  xserver-xorg xinit openbox
+)
 
 missing=()
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
@@ -115,7 +122,63 @@ else
   skip "iw not available — skipping AP-mode capability check."
 fi
 
-# --- 6. Persistence reminder --------------------------------------------
+# --- 6. Console autologin on tty1 ----------------------------------------
+#
+# Lets the machine boot straight to a shell with no login prompt, so it
+# can run headless and still reach the GUI without a keyboard/monitor
+# dance each time.
+
+GETTY_OVERRIDE_DIR="/etc/systemd/system/getty@tty1.service.d"
+GETTY_OVERRIDE_FILE="$GETTY_OVERRIDE_DIR/autologin.conf"
+CURRENT_USER="$(whoami)"
+DESIRED_GETTY_CONTENT="[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin ${CURRENT_USER} --noclear %I \$TERM"
+
+if [[ -f "$GETTY_OVERRIDE_FILE" ]] && diff -q <(echo "$DESIRED_GETTY_CONTENT") "$GETTY_OVERRIDE_FILE" >/dev/null 2>&1; then
+  skip "Console autologin for tty1 already configured for $CURRENT_USER."
+else
+  log "Configuring console autologin on tty1 for $CURRENT_USER..."
+  sudo mkdir -p "$GETTY_OVERRIDE_DIR"
+  TMP_GETTY="$(mktemp)"
+  echo "$DESIRED_GETTY_CONTENT" > "$TMP_GETTY"
+  sudo install -m 0644 "$TMP_GETTY" "$GETTY_OVERRIDE_FILE"
+  rm -f "$TMP_GETTY"
+  sudo systemctl daemon-reload
+  sudo systemctl restart getty@tty1.service
+  ok "Wrote $GETTY_OVERRIDE_FILE and reloaded tty1."
+fi
+
+# --- 7. Auto-start X on tty1 login ----------------------------------------
+
+BASH_PROFILE="$HOME/.bash_profile"
+STARTX_SNIPPET='if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  startx
+fi'
+
+if [[ -f "$BASH_PROFILE" ]] && grep -qF 'startx' "$BASH_PROFILE" 2>/dev/null; then
+  skip "Auto-startx on tty1 login already configured in $BASH_PROFILE."
+else
+  log "Adding auto-startx on tty1 login to $BASH_PROFILE..."
+  printf '\n%s\n' "$STARTX_SNIPPET" >> "$BASH_PROFILE"
+  ok "Updated $BASH_PROFILE."
+fi
+
+# --- 8. Point startx at the Evil Corp GUI ---------------------------------
+
+XINITRC="$HOME/.xinitrc"
+DESIRED_XINITRC="openbox &
+exec python3 $SCRIPT_DIR/evil_corp.py"
+
+if [[ -f "$XINITRC" ]] && diff -q <(echo "$DESIRED_XINITRC") "$XINITRC" >/dev/null 2>&1; then
+  skip "$XINITRC already launches Evil Corp."
+else
+  log "Writing $XINITRC to launch Evil Corp on startx..."
+  echo "$DESIRED_XINITRC" > "$XINITRC"
+  ok "Wrote $XINITRC."
+fi
+
+# --- 9. Persistence reminder --------------------------------------------
 
 if [[ -f /run/live/medium/persistence.conf ]] || [[ -f /persistence.conf ]]; then
   skip "A persistence.conf is already present on this system."
@@ -124,5 +187,9 @@ else
 fi
 
 echo
-ok "Setup complete. Run Evil Corp with:"
+ok "Setup complete. The machine will boot straight into the Evil Corp GUI"
+ok "(console autologin -> startx -> evil_corp.py). Reboot to test:"
+echo "  sudo reboot"
+echo
+echo "Or run it right now without rebooting:"
 echo "  cd $WORK_DIR && python3 $SCRIPT_DIR/evil_corp.py"
