@@ -107,3 +107,17 @@ python3 evil_corp.py   # run as your normal user, NOT with sudo
   going through **Stop Attack**, this machine may still be broadcasting
   under the spoofed MAC. Click **Restore Networking** to restore the
   original MAC as a safety net, or check with `ip link show <iface>`.
+- `Using 'ip' binary: ...` on startup — informational. If a Test 4/5 MAC
+  spoof ever hangs again (GUI appears frozen on that specific action,
+  never on Prepare/Restore/Refresh — those run on background threads),
+  it's almost always this: sudo resolves a *bare* `ip` through its own
+  `secure_path`, which can disagree with this machine's normal `$PATH`
+  about whether `/usr/sbin` or `/usr/bin` comes first. On Debian,
+  `/usr/sbin/ip` is a symlink to `/usr/bin/ip` — same file, but sudo
+  matches the literal resolved path against the sudoers rule, not the
+  symlink target, so the two paths don't match each other even though
+  they're the same binary. Both `evil_corp.py` and `setup.sh` now always
+  use the absolute `/usr/bin/ip` explicitly (never a bare `ip`) to avoid
+  this, but if you ever see "a password is required" hang again, check
+  with `ls -la /usr/sbin/ip /usr/bin/ip` and `sudo -n /usr/bin/ip link set
+  <iface> down` directly.

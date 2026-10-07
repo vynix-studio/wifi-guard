@@ -38,10 +38,21 @@ iproute2 (`ip`, standard on any such system), plus a wireless interface
 capable of AP (master) mode. Passwordless sudo for hostapd and for the
 specific `ip link set <iface> ...` commands used to spoof/restore the MAC
 is set up by setup.sh.
+
+Always invokes `ip` by its resolved absolute path (see _detect_ip_path),
+never the bare command name. sudo resolves a bare command through its own
+secure_path, which can disagree with this script's own $PATH about
+whether /usr/sbin or /usr/bin comes first (on Debian, /usr/sbin/ip is a
+symlink to /usr/bin/ip, but sudo matches the literal resolved path against
+the sudoers rule, not the realpath) — so a bare "ip" can silently resolve
+to a path that doesn't match the NOPASSWD rule setup.sh wrote, and sudo
+falls back to prompting for a password that never arrives (no TTY here),
+hanging forever.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import threading
 import tkinter as tk
@@ -87,7 +98,31 @@ def _read_mac(iface: str) -> str | None:
         return None
 
 
+def _detect_ip_path() -> str:
+    """Resolve the absolute path to the `ip` binary once, up front.
+
+    This MUST be an absolute path, not the bare command "ip": sudo
+    resolves a bare command through its own secure_path, which can list
+    /usr/sbin before /usr/bin (or vice versa). On Debian, /usr/sbin/ip is
+    just a symlink to /usr/bin/ip, but sudo matches the literal resolved
+    path against the sudoers rule, not the realpath — so a bare "ip" can
+    resolve to a path that doesn't textually match the NOPASSWD rule
+    setup.sh wrote for /usr/bin/ip, and sudo falls back to asking for a
+    password (which then hangs forever, since this runs with no TTY).
+    Always invoking the absolute path here sidesteps that resolution
+    ambiguity entirely. Prefer /usr/bin/ip outright (what setup.sh's
+    `command -v ip` resolves to under a normal user's PATH, and what it
+    writes into the sudoers rule) before falling back to a PATH search,
+    so this never depends on PATH-ordering quirks matching sudo's
+    separate secure_path.
+    """
+    if os.path.exists("/usr/bin/ip"):
+        return "/usr/bin/ip"
+    return shutil.which("ip") or "/usr/bin/ip"
+
+
 INTERFACE = _detect_interface()
+IP_PATH = _detect_ip_path()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
 SCENARIOS = {
@@ -145,6 +180,7 @@ class EvilCorpApp:
         self.log(f"Using wireless interface: {INTERFACE}")
         if self.original_mac:
             self.log(f"Original MAC: {self.original_mac}")
+        self.log(f"Using 'ip' binary: {IP_PATH}")
         self.refresh_networks()
 
     # --- UI -----------------------------------------------------------
@@ -474,9 +510,9 @@ class EvilCorpApp:
         self.root.after(0, self.log, f"Cloning BSSID: spoofing {INTERFACE}'s MAC to {target_bssid}...")
         try:
             for args in (
-                ["sudo", "ip", "link", "set", INTERFACE, "down"],
-                ["sudo", "ip", "link", "set", INTERFACE, "address", target_bssid],
-                ["sudo", "ip", "link", "set", INTERFACE, "up"],
+                ["sudo", IP_PATH, "link", "set", INTERFACE, "down"],
+                ["sudo", IP_PATH, "link", "set", INTERFACE, "address", target_bssid],
+                ["sudo", IP_PATH, "link", "set", INTERFACE, "up"],
             ):
                 subprocess.run(args, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
@@ -500,9 +536,9 @@ class EvilCorpApp:
             self.root.after(0, self.log, f"Restoring original MAC ({self.original_mac}) on {INTERFACE}...")
             try:
                 for args in (
-                    ["sudo", "ip", "link", "set", INTERFACE, "down"],
-                    ["sudo", "ip", "link", "set", INTERFACE, "address", self.original_mac],
-                    ["sudo", "ip", "link", "set", INTERFACE, "up"],
+                    ["sudo", IP_PATH, "link", "set", INTERFACE, "down"],
+                    ["sudo", IP_PATH, "link", "set", INTERFACE, "address", self.original_mac],
+                    ["sudo", IP_PATH, "link", "set", INTERFACE, "up"],
                 ):
                     subprocess.run(args, check=True, capture_output=True, text=True)
                 self.mac_spoofed = False

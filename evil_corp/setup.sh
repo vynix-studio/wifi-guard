@@ -102,7 +102,22 @@ fi
 # broad ip access.
 
 HOSTAPD_PATH="$(command -v hostapd || echo /usr/sbin/hostapd)"
-IP_PATH="$(command -v ip || echo /sbin/ip)"
+# Prefer /usr/bin/ip explicitly rather than trusting `command -v ip`'s
+# PATH-search order: on Debian, /usr/sbin/ip is just a symlink to
+# /usr/bin/ip, but sudo matches the literal path it resolves against this
+# rule, not the realpath. sudo's own secure_path can list /usr/sbin before
+# /usr/bin (even when this shell's $PATH doesn't), so if this script picked
+# whichever one happens to resolve first here, evil_corp.py's `sudo ip ...`
+# calls could silently resolve to the other path at runtime and fail to
+# match this rule — which is exactly the bug that caused Test 4/5 to hang
+# waiting on a password prompt with no TTY to answer it. evil_corp.py's own
+# _detect_ip_path() uses this same "/usr/bin/ip first" rule, so the two
+# always agree.
+if [[ -e /usr/bin/ip ]]; then
+  IP_PATH="/usr/bin/ip"
+else
+  IP_PATH="$(command -v ip || echo /sbin/ip)"
+fi
 SUDO_RULE_USER="$(whoami)"
 DESIRED_SUDOERS_CONTENT="${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${HOSTAPD_PATH}
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * down
