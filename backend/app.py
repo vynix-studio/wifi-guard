@@ -43,6 +43,7 @@ from wifiguard.storage.db import (
     get_all_settings,
     get_setting,
     get_trusted_aps,
+    get_trusted_baselines,
     get_trusted_set,
     init_db,
     log_alert,
@@ -77,9 +78,10 @@ def monitor_loop() -> None:
             continue
         try:
             trusted = get_trusted_set()
+            baselines = get_trusted_baselines()
             thresholds = get_thresholds()
             raw_networks = scan()
-            results = evaluate(raw_networks, trusted, thresholds=thresholds)
+            results = evaluate(raw_networks, trusted, thresholds=thresholds, baselines=baselines)
 
             now_iso = datetime.now().isoformat(timespec="seconds")
             for r in results:
@@ -134,7 +136,23 @@ def trusted():
         return jsonify({"error": "ssid and bssid are required"}), 400
 
     if request.method == "POST":
-        add_trusted_ap(ssid, bssid)
+        # Capture this BSSID's current channel/encryption from the latest
+        # scan as its baseline, so later drift (e.g. an Evil Twin that
+        # clones this exact BSSID but downgrades encryption) can be
+        # caught even if it's the only entry seen for this SSID in a
+        # given scan. If it's not in the latest scan (added by hand
+        # without a live network, or scanning was paused), there's
+        # nothing to capture — add_trusted_ap() just leaves the baseline
+        # unset, same as before this feature existed.
+        baseline_channel = None
+        baseline_encryption = None
+        with state_lock:
+            for net in latest_state.get("networks", []):
+                if net.get("bssid") == bssid.lower():
+                    baseline_channel = net.get("channel")
+                    baseline_encryption = net.get("encryption")
+                    break
+        add_trusted_ap(ssid, bssid, baseline_channel, baseline_encryption)
     else:
         remove_trusted_ap(ssid, bssid)
 

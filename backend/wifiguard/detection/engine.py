@@ -19,6 +19,20 @@ Detection signals (each adds weight to a composite score):
   - Encryption downgrade : the rogue broadcasts weaker/no encryption
                             compared to the trusted AP for the same SSID
                             (the classic "free open Wi-Fi" Evil Twin lure).
+  - Baseline drift    : a trusted BSSID's channel/encryption no longer
+                         matches what was recorded when it was marked
+                         trusted. Every rule above only compares entries
+                         *within the same scan*, so a BSSID that is the
+                         ONLY entry seen for its SSID (e.g. an attacker who
+                         clones the exact BSSID, which collapses to one
+                         scan result instead of two) has nothing else in
+                         that scan to be compared against and would
+                         otherwise score 0 even if it's now broadcasting
+                         open where it used to be WPA2. This rule catches
+                         that by comparing the entry against its own
+                         recorded baseline instead of against another
+                         live entry, so it fires even when the entry is
+                         the only one of its kind in the scan.
 """
 
 SCORE_BSSID_MISMATCH = 50
@@ -26,6 +40,8 @@ SCORE_OUI_MISMATCH = 15
 SCORE_CHANNEL_MISMATCH = 10
 SCORE_SIGNAL_ANOMALY = 10
 SCORE_ENCRYPTION_DOWNGRADE = 25
+SCORE_BASELINE_ENCRYPTION_DRIFT = 50
+SCORE_BASELINE_CHANNEL_DRIFT = 15
 
 THRESHOLD_ROGUE = 50
 THRESHOLD_SUSPICIOUS = 20
@@ -73,16 +89,28 @@ def evaluate_group(
     trusted: dict[str, str] | None,
     weights: dict | None = None,
     thresholds: dict | None = None,
+    baselines: dict[str, dict] | None = None,
 ) -> list[dict]:
-    """Score every BSSID seen for a single SSID against the trusted entry."""
+    """Score every BSSID seen for a single SSID against the trusted entry.
+
+    baselines, if given, is {bssid: {"channel": int|None, "encryption":
+    str|None}} — what a trusted BSSID looked like at the moment it was
+    marked trusted. Unlike every other rule here, which compares an entry
+    against another entry *in this same scan*, the baseline check compares
+    a trusted entry against its own recorded history, so it still fires
+    even when that BSSID is the only entry seen for its SSID this scan.
+    """
     weights = weights or {}
     thresholds = thresholds or {}
+    baselines = baselines or {}
 
     w_bssid = weights.get("bssid_mismatch", SCORE_BSSID_MISMATCH)
     w_oui = weights.get("oui_mismatch", SCORE_OUI_MISMATCH)
     w_channel = weights.get("channel_mismatch", SCORE_CHANNEL_MISMATCH)
     w_signal = weights.get("signal_anomaly", SCORE_SIGNAL_ANOMALY)
     w_enc = weights.get("encryption_downgrade", SCORE_ENCRYPTION_DOWNGRADE)
+    w_baseline_enc = weights.get("baseline_encryption_drift", SCORE_BASELINE_ENCRYPTION_DRIFT)
+    w_baseline_channel = weights.get("baseline_channel_drift", SCORE_BASELINE_CHANNEL_DRIFT)
 
     rogue_threshold = thresholds.get("rogue", THRESHOLD_ROGUE)
     suspicious_threshold = thresholds.get("suspicious", THRESHOLD_SUSPICIOUS)
@@ -160,6 +188,37 @@ def evaluate_group(
                     f"'{trusted_entry.get('encryption')}'."
                 )
 
+        # Baseline drift: compares this entry against its OWN recorded
+        # history, not against another entry in this scan — so it still
+        # fires when this is the only entry for this SSID (e.g. a BSSID
+        # clone that collapsed two radios into one scan result, leaving
+        # nothing else here to compare against).
+        baseline = baselines.get(entry["bssid"]) if is_trusted_bssid else None
+        if baseline:
+            baseline_channel = baseline.get("channel")
+            if baseline_channel is not None and entry["channel"] != baseline_channel:
+                score += w_baseline_channel
+                signals.append({"name": "Baseline channel drift", "points": w_baseline_channel})
+                reasons.append(
+                    f"This BSSID was trusted on channel {baseline_channel} but "
+                    f"is now broadcasting on channel {entry['channel']}."
+                )
+
+            baseline_encryption = baseline.get("encryption")
+            if baseline_encryption is not None:
+                baseline_rank = _encryption_rank(baseline_encryption)
+                entry_rank = _encryption_rank(entry.get("encryption", ""))
+                if entry_rank < baseline_rank:
+                    score += w_baseline_enc
+                    signals.append({"name": "Baseline encryption drift", "points": w_baseline_enc})
+                    reasons.append(
+                        f"This BSSID was trusted with '{baseline_encryption}' "
+                        f"encryption but is now broadcasting "
+                        f"'{entry.get('encryption')}' — the same access "
+                        f"point identity has weakened its own security, "
+                        f"which legitimate APs don't do on their own."
+                    )
+
         if score >= rogue_threshold:
             verdict = "Rogue"
         elif score >= suspicious_threshold:
@@ -185,10 +244,11 @@ def evaluate(
     trusted: dict[str, str] | None = None,
     weights: dict | None = None,
     thresholds: dict | None = None,
+    baselines: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Evaluate every scanned network and return per-BSSID verdicts."""
     groups = group_by_ssid(networks)
     results: list[dict] = []
     for ssid, entries in groups.items():
-        results.extend(evaluate_group(ssid, entries, trusted, weights, thresholds))
+        results.extend(evaluate_group(ssid, entries, trusted, weights, thresholds, baselines))
     return results
