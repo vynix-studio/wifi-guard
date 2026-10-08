@@ -146,9 +146,15 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   );
   // bssid -> last status we already alerted on (or saw), so a network that
   // STAYS Rogue/Suspicious across many scans only notifies once, on the
-  // transition into that state, not every scan cycle.
+  // transition into that state, not every scan cycle. Entries are removed
+  // once their BSSID drops out of the live scan (see the cleanup below),
+  // so a BSSID that disappears and later reappears counts as fresh again.
   const lastAlertedStatusRef = useRef<Map<string, NetworkStatus>>(new Map());
-
+  // Separate from the map above (and NOT cleared when it empties out
+  // between tests) -- this just answers "has this tab ever processed a
+  // scan before", purely to suppress a notification storm from whatever
+  // was already Rogue/Suspicious the very first time the page loads.
+  const hasProcessedFirstScanRef = useRef(false);
 
   // Fold each incoming scan into a per-network activity log (newest first),
   // so the inspector's "Recent Activity" reflects real changes between scans.
@@ -214,7 +220,15 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   // record (first load after a page refresh), to avoid a notification
   // storm from pre-existing state.
   useEffect(() => {
-    const seenBefore = lastAlertedStatusRef.current.size > 0;
+    // scan.last_scan_at is null only for the hardcoded placeholder state
+    // this provider starts with, before any real scan (API fetch or
+    // socket "update") has ever arrived — skip entirely rather than
+    // letting that empty placeholder count as "the first scan" and
+    // prematurely flip hasProcessedFirstScanRef, which would disable the
+    // storm-suppression before the real first scan even runs.
+    if (scan.last_scan_at === null) return;
+
+    const seenBefore = hasProcessedFirstScanRef.current;
     for (const network of networks) {
       const prevStatus = lastAlertedStatusRef.current.get(network.bssid);
       const isAlertStatus = network.status === 'rogue' || network.status === 'suspicious';
@@ -242,7 +256,21 @@ export function BackendProvider({ children }: { children: ReactNode }) {
       }
       lastAlertedStatusRef.current.set(network.bssid, network.status);
     }
-  }, [networks, desktopNotificationsEnabled, soundAlertsEnabled]);
+
+    // A BSSID that drops out of the scan entirely (Stop Attack / Restore
+    // Networking makes it vanish, not just change status) forgets its last
+    // status, so the NEXT time it reappears — e.g. the next test launched —
+    // counts as a fresh transition and notifies again. Without this, a
+    // BSSID that was Rogue once stays "already alerted" for the rest of
+    // the session even after it's gone and come back, which is why running
+    // several tests back to back (Test 1/2/3 all broadcast from this
+    // machine's same real MAC) only ever notified on the very first one.
+    const currentBssids = new Set(networks.map((n) => n.bssid));
+    for (const bssid of lastAlertedStatusRef.current.keys()) {
+      if (!currentBssids.has(bssid)) lastAlertedStatusRef.current.delete(bssid);
+    }
+    hasProcessedFirstScanRef.current = true;
+  }, [networks, scan.last_scan_at, desktopNotificationsEnabled, soundAlertsEnabled]);
 
   const refreshAlerts = useCallback(() => {
     api.getAlerts().then(setAlerts).catch(() => {});
