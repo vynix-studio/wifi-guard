@@ -77,7 +77,17 @@ function ScanningSection({
 }
 
 export default function SettingsPage() {
-  const { settings, saveSettings, clearAlerts, connected } = useBackend();
+  const {
+    settings,
+    saveSettings,
+    clearAlerts,
+    connected,
+    desktopNotificationsEnabled,
+    setDesktopNotificationsEnabled,
+    notificationPermission,
+    soundAlertsEnabled,
+    setSoundAlertsEnabled,
+  } = useBackend();
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -106,23 +116,39 @@ export default function SettingsPage() {
             <label className="flex items-center gap-3 cursor-pointer group">
               <input
                 type="checkbox"
-                defaultChecked
+                checked={desktopNotificationsEnabled}
+                onChange={(e) => void setDesktopNotificationsEnabled(e.target.checked)}
                 className="w-4 h-4 accent-primary-600"
               />
               <span className="text-xs text-primary group-hover:text-secondary transition-colors">
                 Desktop notifications
               </span>
             </label>
+            {notificationPermission === "denied" && (
+              <p className="text-xs text-danger-400 pl-7">
+                Blocked by your browser. Allow notifications for this site in your browser's site
+                settings, then try again.
+              </p>
+            )}
+            {notificationPermission === "unsupported" && (
+              <p className="text-xs text-tertiary pl-7">
+                This browser doesn't support desktop notifications.
+              </p>
+            )}
             <label className="flex items-center gap-3 cursor-pointer group">
               <input
                 type="checkbox"
-                defaultChecked
+                checked={soundAlertsEnabled}
+                onChange={(e) => setSoundAlertsEnabled(e.target.checked)}
                 className="w-4 h-4 accent-primary-600"
               />
               <span className="text-xs text-primary group-hover:text-secondary transition-colors">
                 Sound alerts on detection
               </span>
             </label>
+            <p className="text-xs text-tertiary">
+              Fires once when a network first turns Suspicious or Rogue, not on every scan.
+            </p>
           </div>
         </div>
 
