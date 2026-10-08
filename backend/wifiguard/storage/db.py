@@ -61,7 +61,29 @@ def init_db() -> None:
             )
             """
         )
+    _migrate_trusted_aps_baseline_columns()
     init_settings()
+
+
+def _migrate_trusted_aps_baseline_columns() -> None:
+    """Add baseline_channel/baseline_encryption to trusted_aps if missing.
+
+    These record what a trusted AP's channel/encryption looked like at the
+    moment it was marked trusted, so later scans of that exact BSSID can be
+    checked for drift (see the "Baseline drift" rule in detection/engine.py)
+    even when it's the only entry seen for that SSID in a given scan (e.g. a
+    perfect BSSID clone collapses to one scan result, so there's nothing
+    else in that scan to compare it against — but there's still this
+    baseline). CREATE TABLE IF NOT EXISTS above won't add columns to a
+    trusted_aps table that already existed before this feature, so handle
+    that explicitly here; safe to run on every startup.
+    """
+    with get_conn() as conn:
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(trusted_aps)")}
+        if "baseline_channel" not in existing_cols:
+            conn.execute("ALTER TABLE trusted_aps ADD COLUMN baseline_channel INTEGER")
+        if "baseline_encryption" not in existing_cols:
+            conn.execute("ALTER TABLE trusted_aps ADD COLUMN baseline_encryption TEXT")
 
 
 def init_settings() -> None:
@@ -75,12 +97,60 @@ def init_settings() -> None:
 
 # --- trusted APs -----------------------------------------------------------
 
-def add_trusted_ap(ssid: str, bssid: str) -> None:
+def add_trusted_ap(
+    ssid: str,
+    bssid: str,
+    baseline_channel: int | None = None,
+    baseline_encryption: str | None = None,
+) -> None:
+    """Mark an AP trusted. If the caller has the AP's current channel and
+    encryption on hand (app.py looks these up from the live scan at the
+    moment the request comes in), record them as the baseline for drift
+    detection. Re-trusting an already-trusted BSSID refreshes the baseline
+    to whatever is passed this time (or clears it, if not passed) rather
+    than keeping a stale one around indefinitely."""
     with get_conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO trusted_aps (ssid, bssid, added_on) "
-            "VALUES (?, ?, ?)",
-            (ssid, bssid.lower(), datetime.now().isoformat(timespec="seconds")),
+            "INSERT OR REPLACE INTO trusted_aps "
+            "(ssid, bssid, added_on, baseline_channel, baseline_encryption) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                ssid,
+                bssid.lower(),
+                datetime.now().isoformat(timespec="seconds"),
+                baseline_channel,
+                baseline_encryption,
+            ),
+        )
+
+
+def backfill_trusted_baseline(ssid: str, bssid: str, channel: int, encryption: str) -> None:
+    """If this trusted AP has no baseline recorded yet, set it now from a
+    live scan entry. A no-op once a baseline already exists.
+
+    This exists for trusted APs added before the baseline-drift feature
+    existed (their baseline_channel/baseline_encryption are NULL) or
+    added while that network wasn't visible in a scan — without this,
+    they'd silently stay un-monitorable for drift forever. The monitor
+    loop calls this every scan cycle for every trusted BSSID currently
+    seen; COALESCE makes repeated calls free once a baseline is set.
+
+    Same one-time trust assumption as add_trusted_ap() itself: whatever
+    this BSSID is broadcasting the moment the baseline gets set (here, or
+    when it was first marked trusted) is assumed legitimate. If an attack
+    is already running the very first time this runs, it adopts the
+    attacker's config as baseline, same as it always could have. There's
+    no way around this without a baseline existing before the attack
+    starts — which is exactly why it's worth marking APs trusted (so
+    add_trusted_ap() captures a clean baseline) before testing, not after.
+    """
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE trusted_aps SET "
+            "baseline_channel = COALESCE(baseline_channel, ?), "
+            "baseline_encryption = COALESCE(baseline_encryption, ?) "
+            "WHERE ssid = ? AND bssid = ?",
+            (channel, encryption, ssid, bssid.lower()),
         )
 
 
@@ -95,7 +165,8 @@ def remove_trusted_ap(ssid: str, bssid: str) -> None:
 def get_trusted_aps() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT ssid, bssid, added_on FROM trusted_aps ORDER BY added_on DESC"
+            "SELECT ssid, bssid, added_on, baseline_channel, baseline_encryption "
+            "FROM trusted_aps ORDER BY added_on DESC"
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -103,6 +174,24 @@ def get_trusted_aps() -> list[dict]:
 def get_trusted_set() -> dict[str, str]:
     """Return {ssid: bssid} for use by the detection engine."""
     return {row["ssid"]: row["bssid"] for row in get_trusted_aps()}
+
+
+def get_trusted_baselines() -> dict[str, dict]:
+    """Return {bssid: {"channel": int|None, "encryption": str|None}} for
+    every trusted AP that has a recorded baseline, for the detection
+    engine's baseline-drift check. A BSSID with no baseline recorded
+    (added before this feature existed, or added while that network
+    wasn't visible in a scan) simply won't appear here, and the baseline
+    check is skipped for it — same as before this feature existed."""
+    baselines = {}
+    for row in get_trusted_aps():
+        if row["baseline_channel"] is None and row["baseline_encryption"] is None:
+            continue
+        baselines[row["bssid"]] = {
+            "channel": row["baseline_channel"],
+            "encryption": row["baseline_encryption"],
+        }
+    return baselines
 
 
 # --- alert log ---------------------------------------------------------------
