@@ -124,8 +124,19 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
   const historyRef = useRef<Map<string, History>>(new Map());
 
-  const [desktopNotificationsEnabled, setDesktopNotificationsEnabledState] = useState(() =>
-    readBoolPref(LS_DESKTOP_NOTIFICATIONS, true),
+  // The stored preference alone isn't enough to decide the checkbox's
+  // initial state: modern browsers (Chrome in particular) flatly refuse to
+  // grant Notification permission from a request that isn't triggered by a
+  // direct user gesture, so an auto-request on mount frequently can't
+  // succeed at all. If the checkbox started "on" whenever the stored
+  // preference was true regardless of actual permission, a user's first
+  // click (meaning to turn it ON) would instead UNCHECK it, since React
+  // sees it as already checked. So: only show it as on when permission is
+  // ACTUALLY granted already; otherwise it starts unchecked no matter what
+  // was stored, and the user's click is a genuine "turn on" gesture that
+  // can reliably request permission.
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabledState] = useState(
+    () => readBoolPref(LS_DESKTOP_NOTIFICATIONS, true) && notificationSupport() === 'granted',
   );
   const [soundAlertsEnabled, setSoundAlertsEnabledState] = useState(() =>
     readBoolPref(LS_SOUND_ALERTS, true),
@@ -137,6 +148,7 @@ export function BackendProvider({ children }: { children: ReactNode }) {
   // STAYS Rogue/Suspicious across many scans only notifies once, on the
   // transition into that state, not every scan cycle.
   const lastAlertedStatusRef = useRef<Map<string, NetworkStatus>>(new Map());
+
 
   // Fold each incoming scan into a per-network activity log (newest first),
   // so the inspector's "Recent Activity" reflects real changes between scans.

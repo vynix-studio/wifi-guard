@@ -135,6 +135,12 @@ export default function SettingsPage() {
                 This browser doesn't support desktop notifications.
               </p>
             )}
+            {notificationPermission === "default" && !desktopNotificationsEnabled && (
+              <p className="text-xs text-tertiary pl-7">
+                Click the checkbox above — your browser will ask you to allow notifications for
+                this page.
+              </p>
+            )}
             <label className="flex items-center gap-3 cursor-pointer group">
               <input
                 type="checkbox"
