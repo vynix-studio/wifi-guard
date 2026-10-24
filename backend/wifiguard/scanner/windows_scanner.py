@@ -7,6 +7,17 @@ the OS-native tool is slower per call but far more dependable.
 
 import re
 import subprocess
+import sys
+
+# netsh is a console app, so every subprocess.run() call against it briefly
+# flashes a console window of its own on Windows -- even though this app
+# itself runs with no console (see packaging/wifiguard.spec, console=False).
+# Each Wi-Fi scan shells out to netsh, so without this the user sees a
+# command-prompt window flash on every refresh. CREATE_NO_WINDOW tells
+# Windows not to allocate a console for the child process at all.
+# subprocess.CREATE_NO_WINDOW only exists on Windows, so guard it for the
+# Linux/macOS case where this module still gets imported (even if unused).
+_NO_WINDOW_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def get_raw_scan_output() -> str:
@@ -17,6 +28,7 @@ def get_raw_scan_output() -> str:
         text=True,
         encoding="utf-8",
         errors="ignore",
+        creationflags=_NO_WINDOW_FLAGS,
     )
     return result.stdout
 

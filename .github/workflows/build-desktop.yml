@@ -1,0 +1,106 @@
+name: Build WiFiGuard desktop installers
+
+# PyInstaller and electron-builder's native targets (.deb/AppImage, .exe)
+# both build for whatever OS they're running ON — neither cross-compiles.
+# So this can't be done from a single machine/container; it needs one job
+# per target OS, each on that OS's own runner. That's what this does.
+#
+# Manual-only for now: triggered from the Actions tab ("Run workflow") or
+# `gh workflow run`, never on a push or tag. A tag push also makes
+# electron-builder think it should publish a GitHub Release (see the
+# --publish never flag below), which isn't wanted for a one-off test
+# build — so tag-triggering is intentionally left out here.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Install backend dependencies
+        run: |
+          pip install -e backend --break-system-packages
+          pip install pyinstaller --break-system-packages
+
+      - name: Build backend executable
+        run: pyinstaller packaging/wifiguard.spec --distpath packaging/dist --workpath packaging/build --noconfirm
+
+      - name: Install Electron dependencies
+        run: npm install
+        working-directory: electron
+
+      - name: Build Linux installers (AppImage + deb)
+        run: npm run dist:linux
+        working-directory: electron
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wifiguard-linux-installers
+          path: |
+            packaging/installers/*.AppImage
+            packaging/installers/*.deb
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Install backend dependencies
+        run: |
+          pip install -e backend
+          pip install pyinstaller
+
+      - name: Build backend executable
+        run: pyinstaller packaging/wifiguard.spec --distpath packaging/dist --workpath packaging/build --noconfirm
+
+      - name: Install Electron dependencies
+        run: npm install
+        working-directory: electron
+
+      - name: Build Windows installer (.exe)
+        run: npm run dist:win
+        working-directory: electron
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wifiguard-windows-installer
+          path: packaging/installers/*.exe

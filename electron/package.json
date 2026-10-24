@@ -1,0 +1,64 @@
+{
+  "name": "wifiguard-desktop",
+  "version": "0.1.0",
+  "description": "WiFiGuard — Rogue Access Point & Evil Twin Detection, packaged as a standalone desktop app",
+  "main": "main.js",
+  "private": true,
+  "homepage": "https://github.com/vynix-studio/wifi-guard",
+  "author": {
+    "name": "Ismaila Sheriff",
+    "email": "sheriffismail360@gmail.com"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ng.edu.afit.wifiguard",
+    "productName": "WiFiGuard",
+    "copyright": "Copyright (c) 2026",
+    "publish": null,
+    "directories": {
+      "output": "../packaging/installers",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../packaging/dist/",
+        "to": "backend",
+        "filter": ["wifiguard-backend", "wifiguard-backend.exe"]
+      }
+    ],
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png",
+      "category": "Network",
+      "maintainer": "Ismaila Sheriff <sheriffismail360@gmail.com>"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
