@@ -5,16 +5,14 @@ name: Build WiFiGuard desktop installers
 # So this can't be done from a single machine/container; it needs one job
 # per target OS, each on that OS's own runner. That's what this does.
 #
-# Manual run (workflow_dispatch) for building a one-off set of installers
-# to test or hand to someone, and a tag push (v*) for a real release —
-# adjust the triggers below once this is wired into an actual release
-# process.
+# Manual-only for now: triggered from the Actions tab ("Run workflow") or
+# `gh workflow run`, never on a push or tag. A tag push also makes
+# electron-builder think it should publish a GitHub Release (see the
+# --publish never flag below), which isn't wanted for a one-off test
+# build — so tag-triggering is intentionally left out here.
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 jobs:
   build-linux:
