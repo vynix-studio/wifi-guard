@@ -35,3 +35,11 @@ backend/**/__pycache__
 backend/wifiguard.db
 backend/.python-version
 *.pyc
+
+# PyInstaller build output (rebuilt from source, see packaging/wifiguard.spec)
+packaging/build/
+packaging/dist/
+packaging/installers/
+
+# Electron deps/output (rebuilt from source)
+electron/node_modules/
