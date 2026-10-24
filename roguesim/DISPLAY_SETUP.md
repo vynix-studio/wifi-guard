@@ -1,8 +1,8 @@
 # Headless-to-GUI boot: how it works
 
-`setup.sh` configures the machine to boot straight into the Evil Corp GUI
+`setup.sh` configures the machine to boot straight into the RogueSim GUI
 — no monitor/keyboard interaction needed, no login prompt, no typing
-`startx` or `python3 evil_corp.py` by hand. This file documents what it
+`startx` or `python3 roguesim.py` by hand. This file documents what it
 sets up and how to troubleshoot it; you don't need to run anything here
 manually — `./setup.sh` does it, idempotently, like everything else it
 configures.
@@ -15,16 +15,16 @@ configures.
 2. **Console autologin on tty1** — `/etc/systemd/system/getty@tty1.service.d/autologin.conf`,
    so the machine drops straight into a shell as you, no login prompt.
    `setup.sh` prompts for which username to auto-login as (default: the
-   user running the script). Set `EVIL_CORP_AUTOLOGIN_USER=someuser` to
+   user running the script). Set `ROGUESIM_AUTOLOGIN_USER=someuser` to
    skip the prompt, e.g. for a non-interactive/scripted run.
 3. **Auto-`startx` on tty1 login** — appended to `~/.bash_profile`, only
    fires on tty1 so it won't interfere with SSH sessions.
-4. **`~/.xinitrc`** launching `openbox &` then `evil_corp.py` as X's sole
+4. **`~/.xinitrc`** launching `openbox &` then `roguesim.py` as X's sole
    client — closing the GUI window ends the X session and drops back to
    the tty.
 
 Power on → boots → autologs in on tty1 → `startx` fires from
-`.bash_profile` → X launches `evil_corp.py`. No keyboard interaction
+`.bash_profile` → X launches `roguesim.py`. No keyboard interaction
 needed before the GUI is on screen.
 
 Re-running `./setup.sh` after a `git pull` checks all of this and only
@@ -66,7 +66,7 @@ sudo systemctl restart getty@tty1.service
 ```
 
 then `Ctrl+Alt+F1` to switch to tty1. For the X/`.xinitrc` part, log out
-and back in, or run `startx` by hand once to confirm `evil_corp.py`
+and back in, or run `startx` by hand once to confirm `roguesim.py`
 launches.
 
 **`-bash: [-z: command not found` on login** — a broken `~/.bash_profile`

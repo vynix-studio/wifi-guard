@@ -1,7 +1,7 @@
 # Allows the `kali` user to run hostapd, the specific `ip link` commands
 # used to spoof/restore this machine's wireless MAC, airmon-ng (to free the
 # interface for AP mode), and systemctl (to restart NetworkManager
-# afterward) — all without a password prompt, so Evil Corp's GUI (run
+# afterward) — all without a password prompt, so RogueSim's GUI (run
 # WITHOUT sudo, to keep $DISPLAY) can call `sudo hostapd ...`,
 # `sudo ip link set ...`, `sudo airmon-ng check kill`, and
 # `sudo systemctl start NetworkManager` itself. setup.sh writes this
@@ -9,7 +9,7 @@
 #
 # hostapd: launching the attack AP.
 # ip link set <iface> down/address <mac>/up: the BSSID-clone scenarios
-#   (Test 4/5 in evil_corp.py) spoof this machine's MAC to match the
+#   (Test 4/5 in roguesim.py) spoof this machine's MAC to match the
 #   target's BSSID, then restore the original MAC afterward.
 # airmon-ng check kill: Prepare Attack Mode frees the interface from
 #   NetworkManager/wpa_supplicant so hostapd can use it.
@@ -24,13 +24,13 @@
 # often just a symlink to each other) comes first. Getting this wrong is
 # exactly what caused Test 4/5, then Prepare Attack Mode/Restore
 # Networking, to hang waiting on a password prompt that never arrives
-# (evil_corp.py runs with no TTY). setup.sh resolves these automatically
-# and consistently with what evil_corp.py itself invokes; if setting this
+# (roguesim.py runs with no TTY). setup.sh resolves these automatically
+# and consistently with what roguesim.py itself invokes; if setting this
 # up by hand, double-check with `sudo -n <full path> ...` against the
 # exact command, not just `which <cmd>`.
 #
 # Install with:
-#   sudo visudo -f /etc/sudoers.d/evil-corp
+#   sudo visudo -f /etc/sudoers.d/roguesim
 # then paste the lines below (adjust the username and paths if different).
 
 kali ALL=(ALL) NOPASSWD: /usr/sbin/hostapd

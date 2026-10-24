@@ -1,4 +1,4 @@
-# Evil Corp
+# RogueSim
 
 A controlled Evil Twin attack simulator for testing WiFiGuard's detection
 engine, run from a Kali Linux Live USB with a GUI instead of raw hostapd
@@ -22,7 +22,7 @@ Scenarios 4 and 5 spoof this machine's wireless MAC address (via
 network's BSSID before launching hostapd, then restore the original MAC
 on **Stop Attack** (or **Restore Networking**, as a safety net if the
 attack ends some other way). `setup.sh` configures the passwordless sudo
-needed for this — see `sudoers_evil_corp.example`.
+needed for this — see `sudoers_roguesim.example`.
 
 ## One-time setup (on the Kali/Debian machine)
 
@@ -46,7 +46,7 @@ needed for this — see `sudoers_evil_corp.example`.
 
 2. **Everything else: run `setup.sh`.**
    ```bash
-   cd evil_corp
+   cd roguesim
    ./setup.sh
    ```
    This installs `hostapd`, `network-manager` (for `nmcli`), `aircrack-ng`
@@ -57,10 +57,10 @@ needed for this — see `sudoers_evil_corp.example`.
    scenarios use to spoof/restore this machine's MAC, for
    `airmon-ng check kill` (**Prepare Attack Mode**), and for
    `systemctl start NetworkManager` (**Restore Networking**) — see
-   `sudoers_evil_corp.example` for exactly what it writes; creates
+   `sudoers_roguesim.example` for exactly what it writes; creates
    `~/wifiguard-tests`; configures
    console autologin on tty1 and auto-`startx` so the machine boots
-   straight into the Evil Corp GUI with no login prompt or manual
+   straight into the RogueSim GUI with no login prompt or manual
    commands (see [`DISPLAY_SETUP.md`](DISPLAY_SETUP.md) for how this
    works and how to troubleshoot it); and checks your wireless adapter
    reports AP mode support. Every step first checks whether it's already
@@ -78,7 +78,7 @@ instead (e.g. you're already logged in and it's not already running):
 
 ```bash
 cd ~/wifiguard-tests   # or wherever you put this folder
-python3 evil_corp.py   # run as your normal user, NOT with sudo
+python3 roguesim.py   # run as your normal user, NOT with sudo
 ```
 
 1. Click **Prepare Attack Mode** — this runs `airmon-ng check kill`, which
@@ -104,8 +104,8 @@ python3 evil_corp.py   # run as your normal user, NOT with sudo
 - `Cloning BSSID: spoofing <iface>'s MAC to <bssid>...` (Test 4/5 only) —
   expected, not an error. If it's followed by `Failed to spoof MAC`,
   double-check `setup.sh` ran successfully and wrote the `ip link set`
-  sudoers rules (see `sudoers_evil_corp.example`).
-- If Evil Corp is closed (or crashes) mid-attack during Test 4/5 without
+  sudoers rules (see `sudoers_roguesim.example`).
+- If RogueSim is closed (or crashes) mid-attack during Test 4/5 without
   going through **Stop Attack**, this machine may still be broadcasting
   under the spoofed MAC. Click **Restore Networking** to restore the
   original MAC as a safety net, or check with `ip link show <iface>`.
@@ -121,7 +121,7 @@ python3 evil_corp.py   # run as your normal user, NOT with sudo
   `/usr/bin/ip` on Debian — same file, but sudo matches the literal
   resolved path against the sudoers rule, not the symlink target, so the
   two don't match each other even though they're the same binary). Every
-  sudo'd call in `evil_corp.py` (`ip`, `hostapd`, `airmon-ng`,
+  sudo'd call in `roguesim.py` (`ip`, `hostapd`, `airmon-ng`,
   `systemctl`) now always uses a resolved absolute path, never a bare
   command name, and `setup.sh` writes the matching sudoers rules with the
   same path preference — but if you ever see "a password is required"

@@ -1,4 +1,4 @@
-"""Evil Corp: a controlled Evil Twin attack simulator for WiFiGuard testing.
+"""RogueSim: a controlled Evil Twin attack simulator for WiFiGuard testing.
 
 Runs on a Kali/Debian Linux machine. Lets you pick a real nearby network
 from a Tkinter GUI, choose a test scenario, and launch/stop a cloned AP
@@ -65,14 +65,14 @@ def _detect_interface() -> str:
     """Pick the wireless interface to use.
 
     Interface names vary by machine/driver (wlan0, wlo1, wlp3s0,
-    wlx<mac>, ...), so don't hardcode one. EVIL_CORP_INTERFACE overrides
+    wlx<mac>, ...), so don't hardcode one. ROGUESIM_INTERFACE overrides
     everything if set; otherwise look for any interface the kernel
     reports as wireless (has a /sys/class/net/<iface>/wireless dir, which
     needs no extra tools like `iw` to check), and fall back to the old
     "wlan0" default if nothing is found (e.g. machine checked before the
     adapter is plugged in).
     """
-    env_iface = os.environ.get("EVIL_CORP_INTERFACE")
+    env_iface = os.environ.get("ROGUESIM_INTERFACE")
     if env_iface:
         return env_iface
     sys_net = "/sys/class/net"
@@ -184,10 +184,10 @@ SCENARIOS = {
 WPA2_PASSPHRASE = "testpassword123"
 
 
-class EvilCorpApp:
+class RogueSimApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Evil Corp")
+        self.root.title("RogueSim")
         self.root.geometry("640x560")
         self.root.resizable(False, False)
 
@@ -314,7 +314,7 @@ class EvilCorpApp:
         if others:
             self.log(
                 f"Found these wireless interfaces instead: {', '.join(others)}. "
-                f"Set EVIL_CORP_INTERFACE={others[0]} and restart Evil Corp, "
+                f"Set ROGUESIM_INTERFACE={others[0]} and restart RogueSim, "
                 f"or run 'ip link show' to check."
             )
         else:
@@ -323,7 +323,7 @@ class EvilCorpApp:
                 "plugged in / enabled, then run 'ip link show'."
             )
         messagebox.showerror(
-            "Evil Corp", f"Wireless interface '{INTERFACE}' not found. See the Status log."
+            "RogueSim", f"Wireless interface '{INTERFACE}' not found. See the Status log."
         )
         return False
 
@@ -488,7 +488,7 @@ class EvilCorpApp:
 
         idx = self.network_combo.current()
         if idx < 0 or idx >= len(self.networks_raw):
-            messagebox.showwarning("Evil Corp", "Select a target network first.")
+            messagebox.showwarning("RogueSim", "Select a target network first.")
             return
 
         net = self.networks_raw[idx]
@@ -629,5 +629,5 @@ def _split_terse_line(line: str) -> list[str]:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    EvilCorpApp(root)
+    RogueSimApp(root)
     root.mainloop()
