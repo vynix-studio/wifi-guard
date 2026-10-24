@@ -4,6 +4,11 @@
   "description": "WiFiGuard — Rogue Access Point & Evil Twin Detection, packaged as a standalone desktop app",
   "main": "main.js",
   "private": true,
+  "homepage": "https://github.com/vynix-studio/wifi-guard",
+  "author": {
+    "name": "Ismaila Sheriff",
+    "email": "sheriffismail360@gmail.com"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
@@ -18,6 +23,7 @@
     "appId": "ng.edu.afit.wifiguard",
     "productName": "WiFiGuard",
     "copyright": "Copyright (c) 2026",
+    "publish": null,
     "directories": {
       "output": "../packaging/installers",
       "buildResources": "build"
@@ -39,7 +45,8 @@
         { "target": "deb", "arch": ["x64"] }
       ],
       "icon": "build/icon.png",
-      "category": "Network"
+      "category": "Network",
+      "maintainer": "Ismaila Sheriff <sheriffismail360@gmail.com>"
     },
     "win": {
       "target": [
