@@ -13,9 +13,19 @@ name: Build WiFiGuard desktop installers
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: "Which installer(s) to build"
+        type: choice
+        default: both
+        options:
+          - both
+          - linux
+          - windows
 
 jobs:
   build-linux:
+    if: ${{ inputs.platform == 'both' || inputs.platform == 'linux' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +72,7 @@ jobs:
             packaging/installers/*.deb
 
   build-windows:
+    if: ${{ inputs.platform == 'both' || inputs.platform == 'windows' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
