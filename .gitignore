@@ -34,6 +34,7 @@ backend/__pycache__
 backend/**/__pycache__
 backend/wifiguard.db
 backend/.python-version
+backend/*.egg-info
 *.pyc
 
 # PyInstaller build output (rebuilt from source, see packaging/wifiguard.spec)
