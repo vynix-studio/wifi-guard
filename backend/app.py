@@ -1,10 +1,17 @@
 """WiFiGuard backend: Flask JSON API + SocketIO live updates.
 
-This serves the React frontend in this repo (vite dev server on
-http://localhost:5173 by default). It performs no HTML rendering itself.
+Serves the built React frontend (backend/dist, see resolve_dist_dir()
+below) directly, so this process alone is a complete, double-clickable
+app with no separate frontend dev server needed. For day-to-day frontend
+development, running `pnpm run dev` (Vite on :5173) still works too; the
+static route here only kicks in for paths Flask doesn't otherwise match.
 
 Run with:
     uv run python app.py
+
+Set WIFIGUARD_DEV=1 to enable Flask/Werkzeug's debug mode (auto-reload,
+interactive debugger). Never set this in a packaged build: the debugger
+can execute arbitrary code from anyone who can reach the port.
 
 Endpoints:
     GET  /api/networks            -> latest scan results with verdicts
@@ -17,6 +24,7 @@ Endpoints:
     GET  /api/settings            -> current settings
     POST /api/settings            -> update settings
     GET  /api/health              -> liveness check
+    GET  /, /<anything else>      -> the built frontend (backend/dist)
 
 SocketIO event "update" is emitted after every scan cycle with the same
 shape as GET /api/networks, so the frontend can render live without
@@ -26,11 +34,13 @@ polling.
 import csv
 import io
 import os
+import sys
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -52,8 +62,37 @@ from wifiguard.storage.db import (
     set_setting,
 )
 
+def resolve_dist_dir() -> Path:
+    """Locate the built frontend (index.html + assets/).
+
+    Three cases, in order:
+    1. Frozen by PyInstaller: bundled data files are unpacked next to the
+       executable at runtime under sys._MEIPASS, and the PyInstaller spec
+       (see packaging/wifiguard.spec) places the frontend build at
+       "frontend_dist" inside that bundle.
+    2. Normal `python app.py` run from a built release layout, where the
+       frontend build was copied to backend/dist.
+    3. Day-to-day development straight from the repo, where the frontend
+       build still lives at the repo root's dist/ (`pnpm run build`
+       output), one level up from backend/.
+    Returns whichever of these actually exists; the static route below
+    simply 404s on an unbuilt frontend rather than crashing at import
+    time, so the API still works with no frontend built at all.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "frontend_dist"
+
+    backend_dir = Path(__file__).resolve().parent
+    local_dist = backend_dir / "dist"
+    if local_dist.exists():
+        return local_dist
+    return backend_dir.parent / "dist"
+
+
+DIST_DIR = resolve_dist_dir()
+
 app = Flask(__name__)
-CORS(app)  # the React dev server runs on a different port than Flask
+CORS(app)  # still useful for `pnpm run dev` on :5173 talking to this on :5000
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 state_lock = threading.Lock()
@@ -224,8 +263,58 @@ def settings_route():
     return jsonify(get_all_settings())
 
 
+# --- frontend static files ---------------------------------------------------
+# Registered last so they only ever catch a path none of the /api/* routes
+# or Socket.IO's own /socket.io/ path already matched. Vite builds with
+# root-relative asset paths (e.g. /assets/index-XXXX.js), so serving
+# everything straight from DIST_DIR at the site root, rather than under a
+# /static/ prefix, is what the built index.html actually expects.
+
+@app.route("/")
+def frontend_index():
+    index_path = DIST_DIR / "index.html"
+    if not index_path.exists():
+        return (
+            "WiFiGuard backend is running, but no built frontend was found "
+            f"at {DIST_DIR}. Run `pnpm run build` in the frontend directory, "
+            "or use `pnpm run dev` and open http://localhost:5173 instead.",
+            404,
+        )
+    return send_from_directory(DIST_DIR, "index.html")
+
+
+@app.route("/<path:path>")
+def frontend_asset(path: str):
+    full_path = DIST_DIR / path
+    if full_path.is_file():
+        return send_from_directory(DIST_DIR, path)
+    # Not a known static file: fall back to index.html rather than a bare
+    # 404. There's no client-side router in this app today, but this keeps
+    # a direct deep link (or a future router) from dead-ending, the same
+    # way any SPA static host is configured.
+    return frontend_index()
+
+
 if __name__ == "__main__":
     init_db()
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         threading.Thread(target=monitor_loop, daemon=True).start()
-    socketio.run(app, port=5000, debug=True, use_reloader=False)
+    # debug=True enables the Werkzeug interactive debugger, which can
+    # execute arbitrary code reflected from a request — fine on a
+    # developer's own machine, never acceptable in a packaged build that
+    # ships to someone else's computer. WIFIGUARD_DEV opts in explicitly;
+    # everything else (including every packaged/frozen run) stays off.
+    dev_mode = os.environ.get("WIFIGUARD_DEV") == "1"
+    # flask-socketio refuses to run its bundled Werkzeug server outside
+    # debug mode unless this is set, since Werkzeug's dev server isn't
+    # meant for a public production deployment. That warning doesn't apply
+    # here: this app only ever binds to 127.0.0.1 for a single local user
+    # (see host= above), never a multi-user internet-facing service.
+    socketio.run(
+        app,
+        host="127.0.0.1",
+        port=5000,
+        debug=dev_mode,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True,
+    )
