@@ -3,8 +3,10 @@ generated_attack.conf
 __pycache__/
 *.pyc
 
-# This branch has no frontend of its own, but node_modules/ and dist/
-# from the frontend branches can land in the working directory when
-# switching branches in a shared checkout. Never commit them here.
+# This branch has no frontend/backend/packaging of its own, but these
+# can land in the working directory when switching branches in a shared
+# checkout. Never commit them here.
 node_modules/
 dist/
+backend/
+packaging/
