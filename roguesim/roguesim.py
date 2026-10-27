@@ -148,6 +148,12 @@ AIRMON_PATH = _detect_airmon_path()
 SYSTEMCTL_PATH = _detect_systemctl_path()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
+# hostapd needs a regulatory country code to pick valid 5GHz channels and
+# transmit power limits (ieee80211d=1 below); it's not required at all for
+# 2.4GHz-only operation, but harmless to always set. Override with
+# ROGUESIM_COUNTRY=<ISO 3166-1 alpha-2> if testing outside Nigeria.
+COUNTRY_CODE = os.environ.get("ROGUESIM_COUNTRY", "NG")
+
 SCENARIOS = {
     "evil_twin": {
         "label": "Test 1: Evil Twin (Open, BSSID+Encryption mismatch)",
@@ -182,6 +188,39 @@ SCENARIOS = {
 }
 
 WPA2_PASSPHRASE = "testpassword123"
+
+
+def _hw_mode_for_channel(channel: int) -> str:
+    """hostapd's hw_mode must match the channel's band, or it can't work
+    out an operating frequency at all and the interface fails with
+    "Could not determine operating frequency" / AP-DISABLED. 'g' for
+    2.4GHz channels (1-14), 'a' for every 5GHz channel RogueSim might be
+    pointed at (a target network's real channel can be either)."""
+    return "g" if 1 <= channel <= 14 else "a"
+
+
+# 5GHz channels 52-144 (UNII-2/UNII-2e) require DFS: the driver must run a
+# Channel Availability Check (listening for radar for ~60 seconds) before
+# hostapd is allowed to transmit, and most consumer Wi-Fi adapters' AP-mode
+# drivers don't implement DFS at all, so hostapd fails immediately on them
+# regardless of hw_mode. 36-48 (UNII-1) and 149+ (UNII-3) don't need DFS
+# and are far more likely to actually work as an AP.
+_DFS_5GHZ_CHANNELS = set(range(52, 145, 4))
+_NON_DFS_5GHZ_ALTERNATES = [36, 40, 44, 48, 149, 153, 157, 161]
+
+
+def _alt_channel_same_band(real_channel: int) -> int:
+    """Pick a different channel than real_channel, in the same band, for
+    the Channel Variance scenario. Picking a channel in the wrong band
+    (e.g. a 2.4GHz channel as the "alternate" for a 5GHz target) would
+    hit the exact same hw_mode mismatch _hw_mode_for_channel exists to
+    avoid."""
+    if 1 <= real_channel <= 14:
+        return 1 if real_channel != 1 else 6
+    for candidate in _NON_DFS_5GHZ_ALTERNATES:
+        if candidate != real_channel:
+            return candidate
+    return real_channel  # unreachable in practice: no other channel to offer
 
 
 class RogueSimApp:
@@ -458,10 +497,11 @@ class RogueSimApp:
         if scenario["channel_mode"] == "same" or not real_channel.isdigit():
             self.scenario_channel_var.set(real_channel)
         else:
-            # pick a different, valid 2.4GHz channel than the real one
+            # Pick a different channel in the SAME band as the real one
+            # (2.4GHz target -> 2.4GHz alternate, 5GHz target -> 5GHz
+            # alternate), never across bands — see _alt_channel_same_band.
             real = int(real_channel)
-            alt = 1 if real != 1 else 6
-            self.scenario_channel_var.set(str(alt))
+            self.scenario_channel_var.set(str(_alt_channel_same_band(real)))
 
     def apply_scenario_bssid(self) -> None:
         key = self._current_scenario_key()
@@ -498,14 +538,27 @@ class RogueSimApp:
 
         self._clone_target_bssid = net["bssid"] if scenario.get("clone_bssid") else None
 
+        channel_num = int(channel) if channel.isdigit() else 0
+        hw_mode = _hw_mode_for_channel(channel_num)
+
         os.makedirs(os.path.dirname(CONF_PATH), exist_ok=True)
         lines = [
             f"interface={INTERFACE}",
             f"driver=nl80211",
             f"ssid={net['ssid']}",
             f"channel={channel}",
-            "hw_mode=g",
+            # hw_mode must match the channel's band (g=2.4GHz, a=5GHz) or
+            # hostapd can't compute an operating frequency at all and the
+            # interface fails with "Could not determine operating
+            # frequency" / AP-DISABLED — this used to be hardcoded to "g",
+            # which broke every 5GHz target.
+            f"hw_mode={hw_mode}",
         ]
+        if hw_mode == "a":
+            # Required for hostapd to accept a 5GHz channel at all: without
+            # a regulatory country code, it has no table of which 5GHz
+            # channels/power limits are legal to use.
+            lines += [f"country_code={COUNTRY_CODE}", "ieee80211d=1"]
         if scenario["security"] == "wpa2":
             lines += [
                 "wpa=2",
@@ -518,7 +571,15 @@ class RogueSimApp:
         self.log(f"--- Launching attack ---")
         self.log(f"Target SSID: {net['ssid']}")
         self.log(f"Security: {scenario['security'].upper()}")
-        self.log(f"Channel: {channel}")
+        self.log(f"Channel: {channel} (hw_mode={hw_mode})")
+        if channel_num in _DFS_5GHZ_CHANNELS:
+            self.log(
+                f"Warning: channel {channel_num} requires DFS (radar detection). "
+                "Most consumer Wi-Fi adapters' AP-mode drivers don't support DFS "
+                "and will fail to bring the interface up even with the correct "
+                "hw_mode. If this fails, retry against a target on a 2.4GHz "
+                "channel or a non-DFS 5GHz channel (36-48, 149+) instead."
+            )
         if self._clone_target_bssid:
             self.log(f"BSSID clone requested: will spoof {INTERFACE} MAC to {self._clone_target_bssid}")
         self.log(f"Config written to {CONF_PATH}")
