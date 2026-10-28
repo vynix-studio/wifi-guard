@@ -148,6 +148,12 @@ AIRMON_PATH = _detect_airmon_path()
 SYSTEMCTL_PATH = _detect_systemctl_path()
 CONF_PATH = os.path.expanduser("~/wifiguard-tests/generated_attack.conf")
 
+# Directory this file lives in — update.sh and setup.sh sit right beside
+# it, and this is how update_roguesim() finds update.sh regardless of
+# what directory RogueSim was launched from.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+UPDATE_SCRIPT_PATH = os.path.join(SCRIPT_DIR, "update.sh")
+
 # hostapd needs a regulatory country code to pick valid 5GHz channels and
 # transmit power limits (ieee80211d=1 below); it's not required at all for
 # 2.4GHz-only operation, but harmless to always set. Override with
@@ -266,7 +272,11 @@ class RogueSimApp:
         self.refresh_btn = ttk.Button(
             top, text="Refresh Networks", command=self.refresh_networks
         )
-        self.refresh_btn.pack(side="left")
+        self.refresh_btn.pack(side="left", padx=(0, 8))
+        self.update_btn = ttk.Button(
+            top, text="Update RogueSim", command=self.update_roguesim
+        )
+        self.update_btn.pack(side="left")
 
         net_frame = ttk.LabelFrame(self.root, text="Target network")
         net_frame.pack(fill="x", **pad)
@@ -329,12 +339,13 @@ class RogueSimApp:
         self.log_text.configure(state="disabled")
 
     def _set_top_buttons_state(self, state: str) -> None:
-        """Enable/disable Prepare/Restore/Refresh together, so overlapping
-        clicks can't start a second airmon-ng/nmcli/systemctl call while
-        one is still running in the background."""
+        """Enable/disable Prepare/Restore/Refresh/Update together, so
+        overlapping clicks can't start a second airmon-ng/nmcli/systemctl/
+        update.sh call while one is still running in the background."""
         self.prepare_btn.configure(state=state)
         self.restore_btn.configure(state=state)
         self.refresh_btn.configure(state=state)
+        self.update_btn.configure(state=state)
 
     # --- network / airmon control --------------------------------------
 
@@ -423,6 +434,66 @@ class RogueSimApp:
         # broadcasting someone else's MAC address.
         if self.mac_spoofed:
             self._restore_mac_async()
+
+    def update_roguesim(self) -> None:
+        """Runs update.sh in a background thread (nmcli/ping/git/setup.sh
+        can easily take the better part of a minute between them) and
+        streams its output into the Status log line by line, same pattern
+        as prepare_attack_mode/restore_networking above."""
+        if self.attack_process is not None and self.attack_process.poll() is None:
+            messagebox.showwarning(
+                "RogueSim",
+                "An attack is currently running. Stop it first before updating RogueSim.",
+            )
+            return
+
+        if not os.environ.get("ROGUESIM_SUDO_PASSWORD"):
+            self.log(
+                "ERROR: ROGUESIM_SUDO_PASSWORD is not set. setup.sh needs sudo "
+                "for several steps and there's no terminal here to prompt for "
+                "it. Set that environment variable and restart RogueSim, then "
+                "retry Update."
+            )
+            messagebox.showerror(
+                "RogueSim",
+                "ROGUESIM_SUDO_PASSWORD is not set. See the Status log for details.",
+            )
+            return
+
+        if not os.path.isfile(UPDATE_SCRIPT_PATH):
+            self.log(f"ERROR: update.sh not found at {UPDATE_SCRIPT_PATH}.")
+            messagebox.showerror("RogueSim", "update.sh is missing. See the Status log.")
+            return
+
+        self.log("Starting RogueSim update. Make sure Ethernet or a USB-tethered phone is connected...")
+        self._set_top_buttons_state("disabled")
+        self.launch_btn.configure(state="disabled")
+
+        def worker() -> None:
+            try:
+                proc = subprocess.Popen(
+                    [UPDATE_SCRIPT_PATH],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                for line in proc.stdout:
+                    self.root.after(0, self.log, line.rstrip())
+                exit_code = proc.wait()
+                if exit_code == 0:
+                    self.root.after(0, self.log, "Update complete.")
+                else:
+                    self.root.after(
+                        0, self.log, f"Update failed (exit code {exit_code}). See the log above."
+                    )
+            except FileNotFoundError:
+                self.root.after(0, self.log, "update.sh not found or not executable.")
+            finally:
+                self.root.after(0, self._set_top_buttons_state, "normal")
+                self.root.after(0, self.launch_btn.configure, {"state": "normal"})
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def refresh_networks(self) -> None:
         """Runs in a background thread — nmcli's --rescan yes can take

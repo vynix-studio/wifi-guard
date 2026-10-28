@@ -93,6 +93,49 @@ python3 roguesim.py   # run as your normal user, NOT with sudo
 5. **Stop Attack** when done, then **Restore Networking** to get this
    machine's own Wi-Fi back.
 
+## Updating RogueSim
+
+This machine's own wireless adapter is busy running attacks (and is often
+left with no real network association on purpose), so it isn't a usable
+path for pulling updates. Instead, **Update RogueSim** uses a *separate*
+wired or tethered connection:
+
+1. Plug in an Ethernet cable, or connect a phone over USB with
+   tethering/USB networking turned on (NetworkManager sees a USB-tethered
+   phone as an ordinary "ethernet" device too — no special setup needed).
+2. Click **Update RogueSim**.
+
+Behind the scenes this runs `update.sh`, which finds and connects that
+wired/tethered device via `nmcli`, waits for it to actually reach the
+internet (not just link up), runs `git pull origin evil-corp`, and then
+re-runs `setup.sh` to apply anything new (packages, sudoers rules, etc.).
+Output streams into the Status log the same way an attack's does.
+
+Because this runs unattended from a GUI button with no terminal attached,
+`setup.sh`'s own internal `sudo` calls can't prompt for a password — you
+have to provide one up front via an environment variable:
+
+- **`ROGUESIM_SUDO_PASSWORD`** (required) — this machine's sudo password.
+  Fed to `sudo` through a short-lived askpass helper that's deleted the
+  moment `update.sh` exits; never written to a persistent file or put on
+  a command line. The environment variable itself is only as safe as
+  whatever sets it — e.g. adding `export ROGUESIM_SUDO_PASSWORD=...` to
+  `~/.bash_profile` makes it readable by anyone with access to this
+  account. That's an accepted trade-off on a dedicated, offline
+  attack-simulation rig — don't do this on a machine that matters.
+- `ROGUESIM_BRANCH` (optional, default `evil-corp`) — which branch to pull.
+- `ROGUESIM_UPDATE_TIMEOUT_SECS` (optional, default `30`) — how long to
+  wait for the wired/tethered connection to reach the internet before
+  giving up.
+
+This also assumes git credentials for
+`https://github.com/vynix-studio/wifi-guard` are already set up on this
+machine — `update.sh` only runs `git pull`, it doesn't configure
+authentication for you.
+
+If an attack is currently running, **Update RogueSim** refuses to start
+(stop the attack first) — same safety convention as the other controls.
+
 ## Known log lines
 
 - `nl80211: Could not configure driver mode` — the interface is still held
