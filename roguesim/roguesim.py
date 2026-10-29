@@ -277,14 +277,6 @@ class RogueSimApp:
             top, text="Update RogueSim", command=self.update_roguesim
         )
         self.update_btn.pack(side="left")
-        # This machine boots straight into RogueSim with no desktop
-        # environment around it, so there's otherwise no safe way to shut
-        # it down short of pulling the power. Pinned to the right so it
-        # stays visually separate from the other (routine) controls.
-        self.poweroff_btn = ttk.Button(
-            top, text="⏻ Power Off", command=self.power_off
-        )
-        self.poweroff_btn.pack(side="right")
 
         net_frame = ttk.LabelFrame(self.root, text="Target network")
         net_frame.pack(fill="x", **pad)
@@ -333,7 +325,14 @@ class RogueSimApp:
         self.stop_btn = ttk.Button(
             action_frame, text="Stop Attack", command=self.stop_attack, state="disabled"
         )
-        self.stop_btn.pack(side="left")
+        self.stop_btn.pack(side="left", padx=(0, 8))
+        # This machine boots straight into RogueSim with no desktop
+        # environment around it, so there's otherwise no safe way to shut
+        # it down short of pulling the power.
+        self.poweroff_btn = ttk.Button(
+            action_frame, text="⏻ Power Off", command=self.power_off
+        )
+        self.poweroff_btn.pack(side="left")
 
         log_frame = ttk.LabelFrame(self.root, text="Status")
         log_frame.pack(fill="both", expand=True, **pad)
