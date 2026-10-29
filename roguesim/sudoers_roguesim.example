@@ -1,11 +1,12 @@
 # Allows the `kali` user to run hostapd, the specific `ip link` commands
 # used to spoof/restore this machine's wireless MAC, airmon-ng (to free the
 # interface for AP mode), and systemctl (to restart NetworkManager
-# afterward) — all without a password prompt, so RogueSim's GUI (run
-# WITHOUT sudo, to keep $DISPLAY) can call `sudo hostapd ...`,
-# `sudo ip link set ...`, `sudo airmon-ng check kill`, and
-# `sudo systemctl start NetworkManager` itself. setup.sh writes this
-# automatically; this file is just a reference for setting it up by hand.
+# afterward, or power the machine off from the GUI's Power Off button) —
+# all without a password prompt, so RogueSim's GUI (run WITHOUT sudo, to
+# keep $DISPLAY) can call `sudo hostapd ...`, `sudo ip link set ...`,
+# `sudo airmon-ng check kill`, `sudo systemctl start NetworkManager`, and
+# `sudo systemctl poweroff` itself. setup.sh writes this automatically;
+# this file is just a reference for setting it up by hand.
 #
 # hostapd: launching the attack AP.
 # ip link set <iface> down/address <mac>/up: the BSSID-clone scenarios
@@ -15,6 +16,9 @@
 #   NetworkManager/wpa_supplicant so hostapd can use it.
 # systemctl start NetworkManager: Restore Networking gives this machine's
 #   own Wi-Fi back afterward.
+# systemctl poweroff: the GUI's Power Off button — this machine normally
+#   boots straight into RogueSim with no desktop environment around it, so
+#   there's otherwise no safe way to shut it down without a keyboard/TTY.
 #
 # Every path below MUST be the exact absolute path sudo itself resolves
 # the bare command to — not wherever `which <cmd>` happens to point as a
@@ -39,3 +43,4 @@ kali ALL=(ALL) NOPASSWD: /usr/bin/ip link set * address *
 kali ALL=(ALL) NOPASSWD: /usr/bin/ip link set * up
 kali ALL=(ALL) NOPASSWD: /usr/sbin/airmon-ng check kill
 kali ALL=(ALL) NOPASSWD: /usr/bin/systemctl start NetworkManager
+kali ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff

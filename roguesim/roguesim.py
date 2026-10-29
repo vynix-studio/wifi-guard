@@ -277,6 +277,14 @@ class RogueSimApp:
             top, text="Update RogueSim", command=self.update_roguesim
         )
         self.update_btn.pack(side="left")
+        # This machine boots straight into RogueSim with no desktop
+        # environment around it, so there's otherwise no safe way to shut
+        # it down short of pulling the power. Pinned to the right so it
+        # stays visually separate from the other (routine) controls.
+        self.poweroff_btn = ttk.Button(
+            top, text="⏻ Power Off", command=self.power_off
+        )
+        self.poweroff_btn.pack(side="right")
 
         net_frame = ttk.LabelFrame(self.root, text="Target network")
         net_frame.pack(fill="x", **pad)
@@ -494,6 +502,38 @@ class RogueSimApp:
                 self.root.after(0, self.launch_btn.configure, {"state": "normal"})
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def power_off(self) -> None:
+        """Shuts this machine down via `sudo systemctl poweroff`.
+
+        This machine boots straight into RogueSim with no desktop
+        environment around it (console autologin -> startx -> this GUI),
+        so without this button the only way to power it off safely is a
+        keyboard/TTY session — not always on hand on a dedicated test rig.
+        """
+        if self.attack_process is not None and self.attack_process.poll() is None:
+            messagebox.showwarning(
+                "RogueSim",
+                "An attack is currently running. Stop it first before powering off.",
+            )
+            return
+
+        if not messagebox.askyesno(
+            "RogueSim", "Power off this machine now?", icon="warning"
+        ):
+            return
+
+        self.log("Powering off...")
+        self._set_top_buttons_state("disabled")
+        self.launch_btn.configure(state="disabled")
+        self.poweroff_btn.configure(state="disabled")
+        try:
+            subprocess.Popen(["sudo", SYSTEMCTL_PATH, "poweroff"])
+        except FileNotFoundError:
+            self.log("ERROR: sudo or systemctl not found — could not power off.")
+            self._set_top_buttons_state("normal")
+            self.launch_btn.configure(state="normal")
+            self.poweroff_btn.configure(state="normal")
 
     def refresh_networks(self) -> None:
         """Runs in a background thread — nmcli's --rescan yes can take

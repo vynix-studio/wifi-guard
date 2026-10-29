@@ -136,6 +136,21 @@ authentication for you.
 If an attack is currently running, **Update RogueSim** refuses to start
 (stop the attack first) — same safety convention as the other controls.
 
+## Powering off
+
+Since this machine boots straight into RogueSim (console autologin ->
+`startx` -> the GUI) with no desktop environment around it, there's
+otherwise no safe way to shut it down short of pulling the power. The
+**⏻ Power Off** button (top-right, separated from the other controls)
+asks for confirmation, then runs `sudo systemctl poweroff`. Like the
+other sudo'd actions, `setup.sh` configures the passwordless sudo rule
+for this — see `sudoers_roguesim.example`. It refuses to run while an
+attack is in progress (stop it first), same as **Update RogueSim**.
+
+If you set this up before the Power Off button existed, just re-run
+`./setup.sh` — it's idempotent and will add the missing sudoers rule
+for you.
+
 ## Known log lines
 
 - `nl80211: Could not configure driver mode` — the interface is still held

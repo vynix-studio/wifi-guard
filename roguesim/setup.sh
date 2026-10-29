@@ -140,7 +140,8 @@ ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * down
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * address *
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${IP_PATH} link set * up
 ${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${AIRMON_PATH} check kill
-${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start NetworkManager"
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} start NetworkManager
+${SUDO_RULE_USER} ALL=(ALL) NOPASSWD: ${SYSTEMCTL_PATH} poweroff"
 
 # sudo diff with process substitution (<(...)) is unreliable here — the
 # /dev/fd/N the shell hands diff doesn't always survive the exec into
@@ -163,7 +164,7 @@ if [[ -f "$SUDOERS_FILE" ]] && sudo diff -q "$TMP_SUDOERS" "$SUDOERS_FILE" >/dev
   skip "Passwordless sudo for hostapd/MAC spoofing/airmon-ng/systemctl already configured ($SUDOERS_FILE)."
   rm -f "$TMP_SUDOERS"
 else
-  log "Configuring passwordless sudo for hostapd ($HOSTAPD_PATH), interface MAC changes ($IP_PATH), airmon-ng ($AIRMON_PATH), and NetworkManager ($SYSTEMCTL_PATH)..."
+  log "Configuring passwordless sudo for hostapd ($HOSTAPD_PATH), interface MAC changes ($IP_PATH), airmon-ng ($AIRMON_PATH), NetworkManager, and poweroff ($SYSTEMCTL_PATH)..."
   if sudo visudo -c -f "$TMP_SUDOERS" >/dev/null 2>&1; then
     sudo install -m 0440 "$TMP_SUDOERS" "$SUDOERS_FILE"
     ok "Wrote $SUDOERS_FILE."
