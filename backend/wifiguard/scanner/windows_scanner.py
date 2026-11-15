@@ -8,6 +8,7 @@ the OS-native tool is slower per call but far more dependable.
 import re
 import subprocess
 import sys
+import time
 
 # netsh is a console app, so every subprocess.run() call against it briefly
 # flashes a console window of its own on Windows -- even though this app
@@ -19,9 +20,41 @@ import sys
 # Linux/macOS case where this module still gets imported (even if unused).
 _NO_WINDOW_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
+# How long to give Windows' own scan to finish before we read the results
+# back out. `netsh wlan scan` returns as soon as the scan is *requested*,
+# not once it's done -- reading immediately after would just hand us the
+# stale cache again, defeating the point.
+_SCAN_SETTLE_SECONDS = 2.0
+
+
+def _trigger_scan() -> None:
+    """Ask Windows' WLAN AutoConfig service to scan right now.
+
+    `netsh wlan show networks` never does this itself -- it only reads
+    whatever that service already has cached, and the service refreshes
+    that cache on its own schedule (roughly every 60s when idle, far less
+    often while already connected to a network). That's why a new or
+    changed access point could take a long time to appear, and why
+    opening Windows' own Wi-Fi flyout made it show up immediately: that
+    UI calls the scan API directly, which this tool previously never
+    did. `netsh wlan scan` issues that same request. Its own failures are
+    ignored here -- if it's unsupported on this Windows build, we fall
+    back to whatever's already cached rather than breaking the scan.
+    """
+    subprocess.run(
+        ["netsh", "wlan", "scan"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        creationflags=_NO_WINDOW_FLAGS,
+    )
+
 
 def get_raw_scan_output() -> str:
     """Run `netsh wlan show networks mode=bssid` and return its raw stdout."""
+    _trigger_scan()
+    time.sleep(_SCAN_SETTLE_SECONDS)
     result = subprocess.run(
         ["netsh", "wlan", "show", "networks", "mode=bssid"],
         capture_output=True,
