@@ -34,6 +34,19 @@ let restartAttempts = 0;
 const MAX_RESTART_ATTEMPTS = 5;
 const RESTART_BACKOFF_MS = 2000;
 
+// Windows toast notifications are keyed to an "AppUserModelID". When the
+// app is launched via a Start Menu shortcut created by the NSIS
+// installer, electron-builder normally sets this automatically to match
+// package.json's build.appId -- but running from source in dev mode
+// (`npm start`), or from a portable/unpacked build with no installed
+// shortcut, there's no such shortcut for Windows to read an AUMID from.
+// Without one, `new Notification(...)` in the renderer can silently
+// fail to show anything on Windows, with no error anywhere. Setting it
+// explicitly here, before any notification is fired, makes it work
+// regardless of how the app was launched. Harmless no-op on
+// macOS/Linux, so no platform guard is needed.
+app.setAppUserModelId("ng.edu.afit.wifiguard");
+
 function backendExecutablePath() {
   // In development, run the backend straight from source with the
   // system/venv Python so there's no PyInstaller build step in the
